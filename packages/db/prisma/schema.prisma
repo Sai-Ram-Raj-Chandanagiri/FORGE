@@ -1,0 +1,659 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// USERS & AUTHENTICATION
+// ============================================================
+
+enum UserRole {
+  ADMIN
+  ORG_ADMIN
+  DEVELOPER
+  USER
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+model User {
+  id            String        @id @default(cuid())
+  email         String        @unique
+  emailVerified DateTime?
+  name          String?
+  username      String        @unique
+  passwordHash  String?
+  avatarUrl     String?
+  bio           String?
+  role          UserRole      @default(USER)
+  status        AccountStatus @default(PENDING_VERIFICATION)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // NextAuth relations
+  accounts Account[]
+  sessions Session[]
+
+  // Organization relations
+  ownedOrganizations Organization[] @relation("OrgOwner")
+  orgMemberships     OrgMembership[]
+
+  // Store relations
+  publishedModules Module[]   @relation("ModuleAuthor")
+  purchases        Purchase[]
+  reviews          Review[]
+
+  // Link relations
+  deployments Deployment[]
+
+  // Hub relations
+  projects       Project[]             @relation("ProjectAuthor")
+  submissions    Submission[]
+  collaborations ProjectCollaborator[]
+  comments       Comment[]
+
+  // System
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ============================================================
+// ORGANIZATIONS
+// ============================================================
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  logoUrl     String?
+  website     String?
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       User            @relation("OrgOwner", fields: [ownerId], references: [id])
+  members     OrgMembership[]
+  purchases   Purchase[]
+  deployments Deployment[]
+
+  @@map("organizations")
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model OrgMembership {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           OrgRole      @default(MEMBER)
+  joinedAt       DateTime     @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@map("org_memberships")
+}
+
+// ============================================================
+// FORGE STORE — MODULES
+// ============================================================
+
+enum ModuleStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ModuleType {
+  SINGLE_CONTAINER
+  MULTI_CONTAINER
+}
+
+enum PricingModel {
+  FREE
+  ONE_TIME
+  SUBSCRIPTION_MONTHLY
+  SUBSCRIPTION_YEARLY
+  USAGE_BASED
+}
+
+model Category {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  slug        String  @unique
+  description String?
+  iconName    String?
+  parentId    String?
+  sortOrder   Int     @default(0)
+
+  parent   Category?        @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[]       @relation("CategoryTree")
+  modules  ModuleCategory[]
+
+  @@map("categories")
+}
+
+model Module {
+  id               String       @id @default(cuid())
+  name             String
+  slug             String       @unique
+  shortDescription String       @db.VarChar(200)
+  description      String       @db.Text
+  authorId         String
+  status           ModuleStatus @default(DRAFT)
+  type             ModuleType
+  pricingModel     PricingModel @default(FREE)
+  price            Decimal?     @db.Decimal(10, 2)
+  currency         String       @default("USD")
+  logoUrl          String?
+  bannerUrl        String?
+  repositoryUrl    String?
+  documentationUrl String?
+  website          String?
+  featured         Boolean      @default(false)
+  downloadCount    Int          @default(0)
+  averageRating    Float        @default(0)
+  reviewCount      Int          @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  publishedAt      DateTime?
+
+  author      User             @relation("ModuleAuthor", fields: [authorId], references: [id])
+  categories  ModuleCategory[]
+  tags        ModuleTag[]
+  versions    ModuleVersion[]
+  purchases   Purchase[]
+  reviews     Review[]
+  deployments Deployment[]
+  screenshots Screenshot[]
+
+  @@index([status, featured])
+  @@index([averageRating(sort: Desc)])
+  @@index([downloadCount(sort: Desc)])
+  @@map("modules")
+}
+
+model ModuleCategory {
+  moduleId   String
+  categoryId String
+
+  module   Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([moduleId, categoryId])
+  @@map("module_categories")
+}
+
+model Tag {
+  id   String @id @default(cuid())
+  name String @unique
+  slug String @unique
+
+  modules  ModuleTag[]
+  projects ProjectTag[]
+
+  @@map("tags")
+}
+
+model ModuleTag {
+  moduleId String
+  tagId    String
+
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([moduleId, tagId])
+  @@map("module_tags")
+}
+
+model Screenshot {
+  id        String @id @default(cuid())
+  moduleId  String
+  url       String
+  caption   String?
+  sortOrder Int    @default(0)
+
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@map("screenshots")
+}
+
+model ModuleVersion {
+  id             String   @id @default(cuid())
+  moduleId       String
+  version        String
+  changelog      String?  @db.Text
+  dockerImage    String
+  composeFileUrl String?
+  configSchema   Json?
+  minResources   Json?
+  fileSize       BigInt?
+  isLatest       Boolean  @default(false)
+  publishedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  module      Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  deployments Deployment[]
+
+  @@unique([moduleId, version])
+  @@map("module_versions")
+}
+
+// ============================================================
+// PURCHASES & BILLING
+// ============================================================
+
+enum PurchaseStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+model Purchase {
+  id              String         @id @default(cuid())
+  userId          String
+  organizationId  String?
+  moduleId        String
+  status          PurchaseStatus @default(ACTIVE)
+  pricePaid       Decimal        @db.Decimal(10, 2)
+  currency        String         @default("USD")
+  stripePaymentId String?
+  subscriptionId  String?
+  expiresAt       DateTime?
+  purchasedAt     DateTime       @default(now())
+
+  user         User          @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  module       Module        @relation(fields: [moduleId], references: [id])
+
+  @@index([userId, moduleId])
+  @@map("purchases")
+}
+
+model UsageRecord {
+  id              String   @id @default(cuid())
+  deploymentId    String
+  cpuSeconds      Float    @default(0)
+  memoryMbHours   Float    @default(0)
+  networkInBytes  BigInt   @default(0)
+  networkOutBytes BigInt   @default(0)
+  diskUsageBytes  BigInt   @default(0)
+  recordedAt      DateTime @default(now())
+  periodStart     DateTime
+  periodEnd       DateTime
+
+  deployment Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+
+  @@index([deploymentId, periodStart])
+  @@map("usage_records")
+}
+
+// ============================================================
+// REVIEWS
+// ============================================================
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  moduleId  String
+  rating    Int
+  title     String?
+  body      String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleId])
+  @@map("reviews")
+}
+
+// ============================================================
+// FORGE LINK — DEPLOYMENTS
+// ============================================================
+
+enum DeploymentStatus {
+  PENDING
+  PROVISIONING
+  RUNNING
+  STOPPED
+  FAILED
+  TERMINATED
+}
+
+model Deployment {
+  id              String           @id @default(cuid())
+  userId          String
+  organizationId  String?
+  moduleId        String
+  versionId       String
+  name            String
+  status          DeploymentStatus @default(PENDING)
+  configuration   Json
+  containerName   String?
+  composeProject  String?
+  assignedPort    Int?
+  healthEndpoint  String?
+  lastHealthCheck DateTime?
+  errorMessage    String?
+  autoRestart     Boolean          @default(true)
+  maxRestarts     Int              @default(3)
+  restartCount    Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  startedAt       DateTime?
+  stoppedAt       DateTime?
+
+  user         User           @relation(fields: [userId], references: [id])
+  organization Organization?  @relation(fields: [organizationId], references: [id])
+  module       Module         @relation(fields: [moduleId], references: [id])
+  version      ModuleVersion  @relation(fields: [versionId], references: [id])
+  usageRecords UsageRecord[]
+  logs         DeploymentLog[]
+
+  @@index([userId, status])
+  @@index([organizationId, status])
+  @@map("deployments")
+}
+
+model DeploymentLog {
+  id           String   @id @default(cuid())
+  deploymentId String
+  level        String
+  message      String   @db.Text
+  metadata     Json?
+  timestamp    DateTime @default(now())
+
+  deployment Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+
+  @@index([deploymentId, timestamp])
+  @@map("deployment_logs")
+}
+
+model ServiceComposition {
+  id             String           @id @default(cuid())
+  userId         String
+  organizationId String?
+  name           String
+  description    String?
+  definition     Json
+  status         DeploymentStatus @default(PENDING)
+  composeProject String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@map("service_compositions")
+}
+
+// ============================================================
+// FORGE HUB — COLLABORATION
+// ============================================================
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+  DRAFT
+}
+
+model Project {
+  id            String        @id @default(cuid())
+  authorId      String
+  name          String
+  slug          String        @unique
+  description   String?       @db.Text
+  readmeUrl     String?
+  repositoryUrl String?
+  status        ProjectStatus @default(DRAFT)
+  isPublic      Boolean       @default(true)
+  stars         Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  author        User                  @relation("ProjectAuthor", fields: [authorId], references: [id])
+  collaborators ProjectCollaborator[]
+  comments      Comment[]
+  tags          ProjectTag[]
+
+  @@map("projects")
+}
+
+model ProjectTag {
+  projectId String
+  tagId     String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, tagId])
+  @@map("project_tags")
+}
+
+model ProjectCollaborator {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  role      String   @default("contributor")
+  joinedAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_collaborators")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  body      String   @db.Text
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User      @relation(fields: [userId], references: [id])
+  parent  Comment?  @relation("CommentThread", fields: [parentId], references: [id])
+  replies Comment[] @relation("CommentThread")
+
+  @@map("comments")
+}
+
+// ============================================================
+// SUBMISSIONS (Hub → Store pipeline)
+// ============================================================
+
+enum SubmissionStatus {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+}
+
+model Submission {
+  id          String           @id @default(cuid())
+  userId      String
+  moduleId    String?
+  appName     String
+  companyName String
+  version     String
+  about       String           @db.Text
+  changelog   String?          @db.Text
+  extraInfo   String?          @db.Text
+  labels      Json
+  fileUrl     String
+  status      SubmissionStatus @default(DRAFT)
+  reviewNotes String?          @db.Text
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  submittedAt DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@map("submissions")
+}
+
+// ============================================================
+// AGENT LAYER
+// ============================================================
+
+model WorkflowRule {
+  id           String   @id @default(cuid())
+  userId       String
+  orgId        String?
+  name         String
+  description  String?
+  triggerEvent String
+  conditions   Json
+  actions      Json
+  isActive     Boolean  @default(true)
+  lastTriggered DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId, isActive])
+  @@map("workflow_rules")
+}
+
+model AgentConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  agentType String
+  messages  Json
+  context   Json?
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  actions AgentAction[]
+
+  @@index([userId, agentType])
+  @@map("agent_conversations")
+}
+
+model AgentAction {
+  id             String   @id @default(cuid())
+  conversationId String
+  actionType     String
+  targetModule   String?
+  payload        Json
+  result         Json?
+  executedAt     DateTime @default(now())
+
+  conversation AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("agent_actions")
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+enum NotificationType {
+  SUBMISSION_STATUS
+  DEPLOYMENT_ALERT
+  REVIEW_RECEIVED
+  PURCHASE_CONFIRMATION
+  SYSTEM_ANNOUNCEMENT
+  COLLABORATION_INVITE
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  link      String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read, createdAt])
+  @@map("notifications")
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}
