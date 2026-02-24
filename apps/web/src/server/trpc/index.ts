@@ -6,6 +6,7 @@ import { moduleRouter } from "./routers/module";
 import { reviewRouter } from "./routers/review";
 import { deploymentRouter } from "./routers/deployment";
 import { hubRouter } from "./routers/hub";
+import { agentRouter } from "./routers/agent";
 
 export const appRouter = router({
   auth: authRouter,
@@ -15,6 +16,7 @@ export const appRouter = router({
   review: reviewRouter,
   deployment: deploymentRouter,
   hub: hubRouter,
+  agent: agentRouter,
 });
 
 export type AppRouter = typeof appRouter;
