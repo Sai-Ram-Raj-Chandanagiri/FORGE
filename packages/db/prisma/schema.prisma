@@ -291,6 +291,17 @@ model ModuleVersion {
   publishedAt    DateTime @default(now())
   createdAt      DateTime @default(now())
 
+  // Build pipeline fields
+  sourceRepoUrl   String?
+  sourceBranch    String?   @default("main")
+  dockerfilePath  String?   @default("./Dockerfile")
+  exposedPort     Int       @default(80)
+  healthCheckPath String    @default("/")
+  requiredEnvVars Json?
+  buildStatus     String?   // "pending" | "building" | "success" | "failed"
+  buildLogs       String?   @db.Text
+  builtImageTag   String?
+
   module      Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   deployments Deployment[]
 

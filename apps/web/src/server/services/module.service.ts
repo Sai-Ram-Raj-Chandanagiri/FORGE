@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { Prisma, type PrismaClient } from "@forge/db";
 import type { CreateModuleInput, UpdateModuleInput, CreateVersionInput } from "@/lib/validators/module";
 import { PaymentService } from "./payment.service";
+import { ImageBuilder } from "@forge/docker-manager";
 
 export interface PurchaseResult {
   success: boolean;
@@ -278,8 +279,212 @@ export class ModuleService {
         configSchema: (input.configSchema as Prisma.InputJsonValue) ?? Prisma.JsonNull,
         minResources: (input.minResources as Prisma.InputJsonValue) ?? Prisma.JsonNull,
         isLatest: true,
+        // Build pipeline fields
+        sourceRepoUrl: input.sourceRepoUrl || null,
+        sourceBranch: input.sourceBranch || "main",
+        exposedPort: input.exposedPort ?? 80,
+        healthCheckPath: input.healthCheckPath || "/",
+        requiredEnvVars: input.requiredEnvVars
+          ? (input.requiredEnvVars as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
+        buildStatus: input.sourceRepoUrl ? "pending" : null,
       },
     });
+  }
+
+  /**
+   * Triggers an async build from the module version's source repo.
+   * Clones the repo, detects/generates Dockerfile, builds image, validates.
+   */
+  async buildFromRepo(userId: string, versionId: string): Promise<{ buildStatus: string }> {
+    const version = await this.prisma.moduleVersion.findUnique({
+      where: { id: versionId },
+      include: { module: { select: { authorId: true, slug: true } } },
+    });
+
+    if (!version) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Module version not found" });
+    }
+
+    if (version.module.authorId !== userId) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized" });
+    }
+
+    if (!version.sourceRepoUrl) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "No source repository URL configured for this version",
+      });
+    }
+
+    if (version.buildStatus === "building") {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "A build is already in progress for this version",
+      });
+    }
+
+    // Mark as building
+    await this.prisma.moduleVersion.update({
+      where: { id: versionId },
+      data: { buildStatus: "building", buildLogs: "" },
+    });
+
+    // Run build asynchronously
+    const imageTag = `forge-modules/${version.module.slug}:${version.version}`;
+
+    const imageBuilder = new ImageBuilder();
+    imageBuilder
+      .fullBuild(
+        version.sourceRepoUrl,
+        version.sourceBranch || "main",
+        imageTag,
+        version.exposedPort,
+        version.healthCheckPath,
+        undefined, // customDockerfile — already in repo or will be auto-detected
+        async (progress) => {
+          // Progressively update build logs
+          await this.prisma.moduleVersion.update({
+            where: { id: versionId },
+            data: { buildLogs: progress.logs },
+          }).catch(() => {}); // Don't fail build on log write errors
+        },
+      )
+      .then(async (result) => {
+        await this.prisma.moduleVersion.update({
+          where: { id: versionId },
+          data: {
+            buildStatus: result.success ? "success" : "failed",
+            buildLogs: result.logs,
+            builtImageTag: result.success ? imageTag : null,
+          },
+        });
+      })
+      .catch(async (err) => {
+        const errorMessage = err instanceof Error ? err.message : "Unknown error";
+        await this.prisma.moduleVersion.update({
+          where: { id: versionId },
+          data: {
+            buildStatus: "failed",
+            buildLogs: errorMessage,
+          },
+        });
+      });
+
+    return { buildStatus: "building" };
+  }
+
+  /**
+   * Triggers an async build using a custom Dockerfile provided by the developer.
+   */
+  async buildWithCustomDockerfile(
+    userId: string,
+    versionId: string,
+    customDockerfile: string,
+  ): Promise<{ buildStatus: string }> {
+    const version = await this.prisma.moduleVersion.findUnique({
+      where: { id: versionId },
+      include: { module: { select: { authorId: true, slug: true } } },
+    });
+
+    if (!version) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Module version not found" });
+    }
+
+    if (version.module.authorId !== userId) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized" });
+    }
+
+    if (!version.sourceRepoUrl) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "No source repository URL configured for this version",
+      });
+    }
+
+    // Mark as building
+    await this.prisma.moduleVersion.update({
+      where: { id: versionId },
+      data: { buildStatus: "building", buildLogs: "" },
+    });
+
+    const imageTag = `forge-modules/${version.module.slug}:${version.version}`;
+
+    const imageBuilder = new ImageBuilder();
+    imageBuilder
+      .fullBuild(
+        version.sourceRepoUrl,
+        version.sourceBranch || "main",
+        imageTag,
+        version.exposedPort,
+        version.healthCheckPath,
+        customDockerfile,
+        async (progress) => {
+          await this.prisma.moduleVersion.update({
+            where: { id: versionId },
+            data: { buildLogs: progress.logs },
+          }).catch(() => {});
+        },
+      )
+      .then(async (result) => {
+        await this.prisma.moduleVersion.update({
+          where: { id: versionId },
+          data: {
+            buildStatus: result.success ? "success" : "failed",
+            buildLogs: result.logs,
+            builtImageTag: result.success ? imageTag : null,
+          },
+        });
+      })
+      .catch(async (err) => {
+        const errorMessage = err instanceof Error ? err.message : "Unknown error";
+        await this.prisma.moduleVersion.update({
+          where: { id: versionId },
+          data: {
+            buildStatus: "failed",
+            buildLogs: errorMessage,
+          },
+        });
+      });
+
+    return { buildStatus: "building" };
+  }
+
+  /**
+   * Returns the current build status and logs for a module version.
+   */
+  async getBuildStatus(userId: string, versionId: string) {
+    const version = await this.prisma.moduleVersion.findUnique({
+      where: { id: versionId },
+      select: {
+        id: true,
+        buildStatus: true,
+        buildLogs: true,
+        builtImageTag: true,
+        sourceRepoUrl: true,
+        exposedPort: true,
+        healthCheckPath: true,
+        module: { select: { authorId: true } },
+      },
+    });
+
+    if (!version) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Module version not found" });
+    }
+
+    if (version.module.authorId !== userId) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized" });
+    }
+
+    return {
+      versionId: version.id,
+      buildStatus: version.buildStatus,
+      buildLogs: version.buildLogs,
+      builtImageTag: version.builtImageTag,
+      sourceRepoUrl: version.sourceRepoUrl,
+      exposedPort: version.exposedPort,
+      healthCheckPath: version.healthCheckPath,
+    };
   }
 
   async getBySlug(slug: string) {

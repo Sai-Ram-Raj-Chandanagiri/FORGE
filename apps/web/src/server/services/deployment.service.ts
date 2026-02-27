@@ -31,7 +31,7 @@ export class DeploymentService {
   // ==================== DEPLOY (CREATE) ====================
 
   async create(userId: string, input: CreateDeploymentInput) {
-    // Verify module version exists
+    // Verify module version exists (including build pipeline fields)
     const version = await this.prisma.moduleVersion.findUnique({
       where: { id: input.versionId },
       include: { module: { select: { id: true, name: true, status: true } } },
@@ -82,8 +82,13 @@ export class DeploymentService {
 
     await this.log(deployment.id, "info", `Deployment "${input.name}" created for ${version.module.name} v${version.version}`);
 
+    // Use built image if available, otherwise fall back to the docker image string
+    const imageToUse = version.builtImageTag || version.dockerImage;
+    const containerPort = version.exposedPort || 80;
+    const healthPath = version.healthCheckPath || "/";
+
     // Provision the container asynchronously
-    this.provisionContainer(deployment.id, userId, version.dockerImage, input.name, assignedPort, input.configuration, input.autoRestart)
+    this.provisionContainer(deployment.id, userId, imageToUse, input.name, assignedPort, containerPort, healthPath, input.configuration, input.autoRestart)
       .catch((err) => {
         console.error(`[DeploymentService] Provision error for ${deployment.id}:`, err);
       });
@@ -100,7 +105,9 @@ export class DeploymentService {
     userId: string,
     dockerImage: string,
     name: string,
-    port: number,
+    hostPort: number,
+    containerPort: number,
+    healthPath: string,
     configuration: Record<string, string>,
     autoRestart: boolean,
   ) {
@@ -116,17 +123,21 @@ export class DeploymentService {
       const networkName = `forge-${userId}`;
       await this.networkManager.createNetwork(networkName);
 
-      // 3. Pull the Docker image
-      await this.containerManager.pullImage(dockerImage);
-      await this.log(deploymentId, "info", `Image "${dockerImage}" pulled successfully`);
+      // 3. Pull the Docker image (skip for locally built images)
+      if (!dockerImage.startsWith("forge-modules/")) {
+        await this.containerManager.pullImage(dockerImage);
+        await this.log(deploymentId, "info", `Image "${dockerImage}" pulled successfully`);
+      } else {
+        await this.log(deploymentId, "info", `Using locally built image: ${dockerImage}`);
+      }
 
-      // 4. Build container config
+      // 4. Build container config with dynamic port mapping
       const containerName = `forge-${name}-${deploymentId.slice(0, 8)}`;
       const containerConfig: ContainerConfig = {
         name: containerName,
         image: dockerImage,
         env: configuration,
-        ports: [{ container: 80, host: port }],
+        ports: [{ container: containerPort, host: hostPort }],
         network: networkName,
         resources: {
           cpuLimit: DEFAULT_CPU_LIMIT,
@@ -154,8 +165,8 @@ export class DeploymentService {
       await this.containerManager.startContainer(containerId);
       await this.log(deploymentId, "info", "Container started");
 
-      // 8. Run health check
-      const healthEndpoint = `http://localhost:${port}`;
+      // 8. Run health check using the module's configured health path
+      const healthEndpoint = `http://localhost:${hostPort}${healthPath}`;
       const healthResult = await this.healthChecker.checkWithRetries(healthEndpoint, 3, 2000, 5000);
 
       if (healthResult.healthy) {

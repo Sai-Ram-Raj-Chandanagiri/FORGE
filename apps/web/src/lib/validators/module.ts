@@ -69,6 +69,26 @@ export const createVersionSchema = z.object({
       diskMb: z.number().min(100).optional(),
     })
     .optional(),
+  // Build pipeline fields
+  sourceRepoUrl: z.string().url("Must be a valid URL").optional().or(z.literal("")),
+  sourceBranch: z.string().min(1).max(256).optional(),
+  exposedPort: z.number().int().min(1).max(65535).optional(),
+  healthCheckPath: z.string().regex(/^\//, "Health check path must start with /").optional(),
+  requiredEnvVars: z.array(z.string()).optional(),
+  customDockerfile: z.string().max(50000).optional(),
+});
+
+export const buildFromRepoSchema = z.object({
+  versionId: z.string(),
+});
+
+export const getBuildStatusSchema = z.object({
+  versionId: z.string(),
+});
+
+export const detectProjectSchema = z.object({
+  repoUrl: z.string().url("Must be a valid URL"),
+  branch: z.string().min(1).default("main"),
 });
 
 export const searchModulesSchema = z.object({
@@ -105,3 +125,6 @@ export type CreateVersionInput = z.infer<typeof createVersionSchema>;
 export type SearchModulesInput = z.infer<typeof searchModulesSchema>;
 export type CreateReviewInput = z.infer<typeof createReviewSchema>;
 export type UpdateReviewInput = z.infer<typeof updateReviewSchema>;
+export type BuildFromRepoInput = z.infer<typeof buildFromRepoSchema>;
+export type GetBuildStatusInput = z.infer<typeof getBuildStatusSchema>;
+export type DetectProjectInput = z.infer<typeof detectProjectSchema>;
