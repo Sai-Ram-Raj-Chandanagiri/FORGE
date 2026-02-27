@@ -21,6 +21,7 @@ import {
   User,
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
+import { SandboxViewer } from "@/components/store/sandbox-viewer";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 
@@ -49,7 +50,7 @@ interface ModuleData {
   author: { id: string; name: string | null; username: string; avatarUrl: string | null; bio: string | null };
   categories: { category: { id: string; name: string; slug: string } }[];
   tags: { tag: { id: string; name: string; slug: string } }[];
-  versions: { id: string; version: string; changelog: string | null; dockerImage: string; composeFileUrl: string | null; configSchema: unknown; minResources: unknown; isLatest: boolean; publishedAt: string; fileSize: unknown }[];
+  versions: { id: string; version: string; changelog: string | null; dockerImage: string; builtImageTag?: string | null; composeFileUrl: string | null; configSchema: unknown; minResources: unknown; isLatest: boolean; publishedAt: string; fileSize: unknown }[];
   screenshots: { id: string; url: string; caption: string | null; sortOrder: number }[];
   reviews: { id: string; rating: number; title: string | null; body: string | null; createdAt: string; user: { id: string; name: string | null; username: string; avatarUrl: string | null } }[];
 }
@@ -428,6 +429,17 @@ export default function ModuleDetailPage() {
             {module.description}
           </div>
         </section>
+
+        {/* Sandbox Demo */}
+        {isAuthenticated && latestVersion && (latestVersion.builtImageTag || latestVersion.dockerImage) && (
+          <section>
+            <SandboxViewer
+              moduleId={module.id}
+              moduleName={module.name}
+              versionId={latestVersion.id}
+            />
+          </section>
+        )}
 
         {/* Screenshots */}
         {module.screenshots.length > 0 && (

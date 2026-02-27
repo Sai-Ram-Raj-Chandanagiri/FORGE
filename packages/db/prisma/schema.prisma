@@ -61,6 +61,9 @@ model User {
   collaborations ProjectCollaborator[]
   comments       Comment[]
 
+  // Sandbox
+  sandboxSessions SandboxSession[]
+
   // System
   notifications Notification[]
 
@@ -217,14 +220,15 @@ model Module {
   updatedAt        DateTime     @updatedAt
   publishedAt      DateTime?
 
-  author      User             @relation("ModuleAuthor", fields: [authorId], references: [id])
-  categories  ModuleCategory[]
-  tags        ModuleTag[]
-  versions    ModuleVersion[]
-  purchases   Purchase[]
-  reviews     Review[]
-  deployments Deployment[]
-  screenshots Screenshot[]
+  author          User             @relation("ModuleAuthor", fields: [authorId], references: [id])
+  categories      ModuleCategory[]
+  tags            ModuleTag[]
+  versions        ModuleVersion[]
+  purchases       Purchase[]
+  reviews         Review[]
+  deployments     Deployment[]
+  screenshots     Screenshot[]
+  sandboxSessions SandboxSession[]
 
   @@index([status, featured])
   @@index([averageRating(sort: Desc)])
@@ -302,8 +306,9 @@ model ModuleVersion {
   buildLogs       String?   @db.Text
   builtImageTag   String?
 
-  module      Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  deployments Deployment[]
+  module          Module           @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  deployments     Deployment[]
+  sandboxSessions SandboxSession[]
 
   @@unique([moduleId, version])
   @@map("module_versions")
@@ -581,6 +586,32 @@ model Submission {
 
   @@index([userId, status])
   @@map("submissions")
+}
+
+// ============================================================
+// SANDBOX DEMOS
+// ============================================================
+
+model SandboxSession {
+  id          String   @id @default(cuid())
+  userId      String
+  moduleId    String
+  versionId   String
+  containerId String?  // Docker container ID
+  networkId   String?  // Sandbox network name
+  port        Int?     // Assigned host port (4001-5000)
+  status      String   @default("starting") // starting | running | expired | failed
+  errorMessage String?
+  expiresAt   DateTime // now + 15 minutes
+  createdAt   DateTime @default(now())
+
+  user    User          @relation(fields: [userId], references: [id])
+  module  Module        @relation(fields: [moduleId], references: [id])
+  version ModuleVersion @relation(fields: [versionId], references: [id])
+
+  @@index([userId, status])
+  @@index([expiresAt])
+  @@map("sandbox_sessions")
 }
 
 // ============================================================
