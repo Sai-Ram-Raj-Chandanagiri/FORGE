@@ -372,6 +372,235 @@ describe("AdminService", () => {
   });
 
   // ---------------------------------------------------------------------------
+  // getSubmissionQueue
+  // ---------------------------------------------------------------------------
+  describe("getSubmissionQueue", () => {
+    it("returns SUBMITTED and IN_REVIEW submissions with pagination", async () => {
+      const mockSubmissions = [
+        { id: "sub-1", appName: "App A", status: "SUBMITTED", user: { id: "u-1", name: "Alice" } },
+        { id: "sub-2", appName: "App B", status: "IN_REVIEW", user: { id: "u-2", name: "Bob" } },
+      ];
+
+      mockPrisma.submission.findMany.mockResolvedValue(mockSubmissions);
+      mockPrisma.submission.count.mockResolvedValue(8);
+
+      const result = await service.getSubmissionQueue(1, 20);
+
+      expect(result).toEqual({
+        submissions: mockSubmissions,
+        total: 8,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+      });
+
+      expect(mockPrisma.submission.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { status: { in: ["SUBMITTED", "IN_REVIEW"] } },
+          orderBy: { submittedAt: "asc" },
+          skip: 0,
+          take: 20,
+        }),
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // reviewSubmission
+  // ---------------------------------------------------------------------------
+  describe("reviewSubmission", () => {
+    const adminUserId = "admin-1";
+
+    it("approves a submission — creates Module + ModuleVersion, links submission, notifies user", async () => {
+      const submission = {
+        id: "sub-1",
+        appName: "My App",
+        about: "A detailed description of the application",
+        version: "1.0.0",
+        changelog: "Initial release",
+        fileUrl: "https://registry.example.com/my-app:1.0.0",
+        userId: "author-1",
+        status: "SUBMITTED",
+        user: { id: "author-1", name: "Author", username: "author" },
+      };
+
+      mockPrisma.submission.findUnique.mockResolvedValue(submission);
+
+      const createdModule = {
+        id: "mod-new",
+        name: "My App",
+        slug: "my-app-ab12",
+        status: "PUBLISHED",
+      };
+      mockPrisma.module.create.mockResolvedValue(createdModule);
+      mockPrisma.submission.update.mockResolvedValue({});
+      mockPrisma.notification.create.mockResolvedValue({});
+      mockPrisma.auditLog.create.mockResolvedValue({});
+
+      const result = await service.reviewSubmission(adminUserId, {
+        submissionId: "sub-1",
+        action: "approve",
+        reviewNotes: "Looks great!",
+      });
+
+      expect(result.status).toBe("APPROVED");
+      expect(result.moduleId).toBe("mod-new");
+
+      // Module was created with correct data
+      expect(mockPrisma.module.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            name: "My App",
+            authorId: "author-1",
+            status: "PUBLISHED",
+            pricingModel: "FREE",
+            versions: {
+              create: expect.objectContaining({
+                version: "1.0.0",
+                changelog: "Initial release",
+                isLatest: true,
+              }),
+            },
+          }),
+        }),
+      );
+
+      // Submission was linked to the created module
+      expect(mockPrisma.submission.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "sub-1" },
+          data: expect.objectContaining({
+            status: "APPROVED",
+            moduleId: "mod-new",
+            reviewNotes: "Looks great!",
+            reviewedBy: adminUserId,
+          }),
+        }),
+      );
+
+      // Notification sent to the submitter
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: "author-1",
+          type: "SUBMISSION_STATUS",
+          title: expect.stringContaining("approved"),
+        }),
+      });
+
+      // Audit log created
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: adminUserId,
+          action: "SUBMISSION_APPROVED",
+          entityType: "Submission",
+          entityId: "sub-1",
+        }),
+      });
+    });
+
+    it("rejects a submission — updates status, notifies user with feedback", async () => {
+      const submission = {
+        id: "sub-2",
+        appName: "Bad App",
+        about: "Some description",
+        version: "0.1.0",
+        changelog: null,
+        fileUrl: "https://example.com/bad-app",
+        userId: "author-2",
+        status: "SUBMITTED",
+        user: { id: "author-2", name: "Dev", username: "dev" },
+      };
+
+      mockPrisma.submission.findUnique.mockResolvedValue(submission);
+      mockPrisma.submission.update.mockResolvedValue({});
+      mockPrisma.notification.create.mockResolvedValue({});
+      mockPrisma.auditLog.create.mockResolvedValue({});
+
+      const result = await service.reviewSubmission(adminUserId, {
+        submissionId: "sub-2",
+        action: "reject",
+        reviewNotes: "Missing documentation",
+      });
+
+      expect(result).toEqual({ status: "REJECTED" });
+
+      // No module created
+      expect(mockPrisma.module.create).not.toHaveBeenCalled();
+
+      // Submission updated to REJECTED
+      expect(mockPrisma.submission.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "sub-2" },
+          data: expect.objectContaining({
+            status: "REJECTED",
+            reviewNotes: "Missing documentation",
+            reviewedBy: adminUserId,
+          }),
+        }),
+      );
+
+      // Notification includes feedback
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: "author-2",
+          type: "SUBMISSION_STATUS",
+          body: expect.stringContaining("Missing documentation"),
+        }),
+      });
+
+      // Audit log records SUBMISSION_REJECTED
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: "SUBMISSION_REJECTED",
+          entityId: "sub-2",
+        }),
+      });
+    });
+
+    it("throws NOT_FOUND when submission does not exist", async () => {
+      mockPrisma.submission.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.reviewSubmission(adminUserId, {
+          submissionId: "nonexistent",
+          action: "approve",
+        }),
+      ).rejects.toThrow(TRPCError);
+
+      await expect(
+        service.reviewSubmission(adminUserId, {
+          submissionId: "nonexistent",
+          action: "approve",
+        }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+
+    it("throws BAD_REQUEST when submission is already approved", async () => {
+      mockPrisma.submission.findUnique.mockResolvedValue({
+        id: "sub-3",
+        appName: "Already Done",
+        status: "APPROVED",
+        userId: "author-3",
+        user: { id: "author-3", name: "Dev", username: "dev" },
+      });
+
+      await expect(
+        service.reviewSubmission(adminUserId, {
+          submissionId: "sub-3",
+          action: "approve",
+        }),
+      ).rejects.toThrow(TRPCError);
+
+      await expect(
+        service.reviewSubmission(adminUserId, {
+          submissionId: "sub-3",
+          action: "approve",
+        }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // getAuditLogs
   // ---------------------------------------------------------------------------
   describe("getAuditLogs", () => {

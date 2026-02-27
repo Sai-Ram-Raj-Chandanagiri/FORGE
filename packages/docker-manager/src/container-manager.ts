@@ -149,11 +149,13 @@ export class ContainerManager {
     const ports = Object.entries(info.NetworkSettings.Ports || {}).flatMap(
       ([key, bindings]) => {
         if (!bindings) return [];
-        const [containerPort, protocol] = key.split("/");
+        const parts = key.split("/");
+        const containerPort = parts[0] ?? "0";
+        const protocol = parts[1] ?? "tcp";
         return bindings.map((b) => ({
           container: parseInt(containerPort, 10),
           host: parseInt(b.HostPort, 10),
-          protocol: protocol || "tcp",
+          protocol,
         }));
       },
     );

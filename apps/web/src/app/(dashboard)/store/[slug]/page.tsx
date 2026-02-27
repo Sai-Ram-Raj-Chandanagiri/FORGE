@@ -1,11 +1,10 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { trpc } from "@/lib/trpc-client";
 import { StarRating } from "@/components/store/star-rating";
 import {
-  ArrowLeft,
   Package,
   Download,
   Star,
@@ -18,8 +17,11 @@ import {
   Loader2,
   Check,
   ShoppingCart,
+  Rocket,
+  User,
 } from "lucide-react";
-import { useState } from "react";
+import { BackButton } from "@/components/ui/back-button";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 
 interface ModuleData {
@@ -67,15 +69,54 @@ function formatPrice(pricingModel: string, price: unknown, currency: string): st
 
 export default function ModuleDetailPage() {
   const { slug } = useParams<{ slug: string }>();
-  const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
 
   const { data: module, isLoading } = trpc.store.getBySlug.useQuery({ slug }) as {
     data: ModuleData | null | undefined;
     isLoading: boolean;
   };
+
   const purchaseMutation = trpc.store.purchase.useMutation();
-  const [purchased, setPurchased] = useState(false);
+  const [justPurchased, setJustPurchased] = useState(false);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<"idle" | "pending" | "completed" | "failed">("idle");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const trpcUtils = trpc.useUtils();
+
+  // Check ownership — only fires when we have both module ID + authenticated session
+  const { data: purchaseCheck, isLoading: isCheckingPurchase } = trpc.store.checkPurchase.useQuery(
+    { moduleId: module?.id ?? "" },
+    { enabled: !!module?.id && sessionStatus === "authenticated" },
+  ) as { data: { purchased: boolean } | undefined; isLoading: boolean };
+
+  // Poll for purchase completion after Stripe checkout opens in new tab
+  const startPolling = useCallback(() => {
+    if (pollRef.current) return;
+    setPaymentStatus("pending");
+    pollRef.current = setInterval(async () => {
+      if (!module?.id) return;
+      const result = await trpcUtils.store.checkPurchase.fetch({ moduleId: module.id });
+      if (result.purchased) {
+        if (pollRef.current) clearInterval(pollRef.current);
+        pollRef.current = null;
+        setPaymentStatus("completed");
+        setJustPurchased(true);
+      }
+    }, 3000); // Check every 3 seconds
+  }, [module?.id, trpcUtils]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  // Derived state
+  const isAuthenticated = sessionStatus === "authenticated";
+  const isAuthor = isAuthenticated && module?.author.id === (session?.user as { id?: string })?.id;
+  const isOwned = justPurchased || (purchaseCheck?.purchased ?? false);
+  const isFree = module?.pricingModel === "FREE";
 
   if (isLoading) {
     return (
@@ -94,13 +135,7 @@ export default function ModuleDetailPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           This module doesn&apos;t exist or isn&apos;t published yet.
         </p>
-        <Link
-          href="/store"
-          className="mt-4 inline-flex items-center gap-2 text-sm text-primary hover:underline"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Store
-        </Link>
+        <BackButton fallback="/store" label="Back" />
       </div>
     );
   }
@@ -109,24 +144,143 @@ export default function ModuleDetailPage() {
 
   async function handlePurchase() {
     if (!module) return;
+    setPurchaseError(null);
+    setPaymentStatus("idle");
     try {
-      await purchaseMutation.mutateAsync({ moduleId: module.id });
-      setPurchased(true);
-    } catch {
-      // Error handled by tRPC
+      const result = await purchaseMutation.mutateAsync({ moduleId: module.id });
+      if (result.checkoutUrl) {
+        // Paid module → open Stripe Checkout in new tab
+        window.open(result.checkoutUrl, "_blank");
+        // Start polling for payment completion
+        startPolling();
+      } else {
+        // Free module → instant acquisition
+        setJustPurchased(true);
+      }
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Failed to process purchase";
+      setPurchaseError(message);
+      setPaymentStatus("failed");
     }
+  }
+
+  // ---- Purchase Card Content ----
+  function renderPurchaseAction() {
+    // Not logged in
+    if (!isAuthenticated) {
+      return (
+        <Link
+          href="/login"
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground shadow"
+        >
+          Sign in to acquire
+        </Link>
+      );
+    }
+
+    // Author viewing their own module
+    if (isAuthor) {
+      return (
+        <div className="flex items-center justify-center gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+          <User className="h-4 w-4" />
+          Your Module
+        </div>
+      );
+    }
+
+    // Already owns it (from DB check or just purchased)
+    if (isOwned) {
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center justify-center gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-sm font-medium text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+            <Check className="h-4 w-4" />
+            Owned
+          </div>
+          <Link
+            href="/link/deploy"
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground shadow hover:bg-primary/90"
+          >
+            <Rocket className="h-4 w-4" />
+            Deploy Now
+          </Link>
+        </div>
+      );
+    }
+
+    // Still checking purchase status
+    if (isCheckingPurchase) {
+      return (
+        <button
+          disabled
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground shadow opacity-50"
+        >
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Checking...
+        </button>
+      );
+    }
+
+    // Waiting for payment in the other tab
+    if (paymentStatus === "pending") {
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center justify-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Awaiting payment...
+          </div>
+          <p className="text-center text-xs text-muted-foreground">
+            Complete your purchase in the Stripe tab. This page will update automatically.
+          </p>
+          <button
+            onClick={() => {
+              if (pollRef.current) clearInterval(pollRef.current);
+              pollRef.current = null;
+              setPaymentStatus("idle");
+            }}
+            className="inline-flex h-9 w-full items-center justify-center rounded-md border text-xs font-medium text-muted-foreground hover:bg-muted"
+          >
+            Cancel
+          </button>
+        </div>
+      );
+    }
+
+    // Available for purchase
+    return (
+      <div className="space-y-3">
+        <button
+          onClick={handlePurchase}
+          disabled={purchaseMutation.isPending}
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+        >
+          {purchaseMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <ShoppingCart className="h-4 w-4" />
+          )}
+          {purchaseMutation.isPending
+            ? "Processing..."
+            : isFree
+              ? "Get Module"
+              : "Buy Now"}
+        </button>
+
+        {purchaseError && (
+          <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+            {purchaseError}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
-      <Link
-        href="/store"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Store
-      </Link>
+      <BackButton fallback="/store" label="Back" />
 
       {/* Header */}
       <div className="flex flex-col gap-6 lg:flex-row">
@@ -203,42 +357,7 @@ export default function ModuleDetailPage() {
               )}
             </div>
 
-            {session ? (
-              <button
-                onClick={handlePurchase}
-                disabled={purchaseMutation.isPending || purchased}
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
-              >
-                {purchaseMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : purchased ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <ShoppingCart className="h-4 w-4" />
-                )}
-                {purchased
-                  ? "Acquired!"
-                  : module.pricingModel === "FREE"
-                    ? "Get Module"
-                    : "Acquire Module"}
-              </button>
-            ) : (
-              <Link
-                href="/login"
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground shadow"
-              >
-                Sign in to acquire
-              </Link>
-            )}
-
-            {purchased && (
-              <Link
-                href="/link"
-                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border text-sm font-medium shadow-sm transition-colors hover:bg-muted"
-              >
-                Deploy in FORGE Link
-              </Link>
-            )}
+            {renderPurchaseAction()}
 
             {latestVersion && (
               <div className="space-y-2 border-t pt-4 text-sm">

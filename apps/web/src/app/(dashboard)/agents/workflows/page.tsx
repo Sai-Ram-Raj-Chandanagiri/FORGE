@@ -5,11 +5,11 @@ import {
   Workflow,
   Zap,
   Trash2,
-  ArrowLeft,
   Plus,
   Power,
   PowerOff,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { trpc } from "@/lib/trpc-client";
 
 interface WorkflowItem {
@@ -71,13 +71,7 @@ export default function WorkflowsPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <Link
-            href="/agents"
-            className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Agents
-          </Link>
+          <BackButton fallback="/agents" label="Back" />
           <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
             <Workflow className="h-8 w-8 text-emerald-500" />
             Workflow Manager

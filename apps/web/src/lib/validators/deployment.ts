@@ -5,16 +5,26 @@ export const createDeploymentSchema = z.object({
   versionId: z.string(),
   name: z
     .string()
+    .trim()
     .min(2, "Name must be at least 2 characters")
     .max(50, "Name must be at most 50 characters")
     .regex(/^[a-zA-Z0-9-_]+$/, "Name can only contain letters, numbers, hyphens, and underscores"),
-  configuration: z.record(z.string()).default({}),
+  configuration: z
+    .record(z.string().max(100), z.string().max(10000))
+    .refine((c) => Object.keys(c).length <= 100, {
+      message: "Configuration must have at most 100 entries",
+    })
+    .default({}),
   autoRestart: z.boolean().default(true),
 });
 
 export const updateDeploymentConfigSchema = z.object({
   deploymentId: z.string(),
-  configuration: z.record(z.string()),
+  configuration: z
+    .record(z.string().max(100), z.string().max(10000))
+    .refine((c) => Object.keys(c).length <= 100, {
+      message: "Configuration must have at most 100 entries",
+    }),
 });
 
 export const listDeploymentsSchema = z.object({

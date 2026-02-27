@@ -49,7 +49,7 @@ export class MonitorAgent extends BaseAgent {
    */
   static parseInsights(response: string): MonitorInsights | null {
     const jsonMatch = response.match(/```json\s*([\s\S]*?)```/);
-    if (!jsonMatch) return null;
+    if (!jsonMatch?.[1]) return null;
 
     try {
       const data = JSON.parse(jsonMatch[1]);

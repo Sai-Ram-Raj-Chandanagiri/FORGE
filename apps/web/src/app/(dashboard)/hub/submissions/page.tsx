@@ -5,7 +5,6 @@ import {
   FolderGit2,
   Upload,
   Calendar,
-  ArrowLeft,
   Clock,
   CheckCircle2,
   XCircle,
@@ -14,6 +13,7 @@ import {
   Send,
   Package,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { trpc } from "@/lib/trpc-client";
 
 interface SubmissionItem {
@@ -79,13 +79,7 @@ export default function SubmissionsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <Link
-          href="/hub"
-          className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Hub
-        </Link>
+        <BackButton fallback="/hub" label="Back" />
         <div className="flex items-center justify-between">
           <div>
             <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">

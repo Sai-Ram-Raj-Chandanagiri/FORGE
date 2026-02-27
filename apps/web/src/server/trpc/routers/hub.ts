@@ -11,14 +11,16 @@ import { HubService } from "@/server/services/hub.service";
 export const hubRouter = router({
   listProjects: publicProcedure.input(listProjectsSchema).query(async ({ ctx, input }) => {
     const service = new HubService(ctx.prisma);
-    return service.listProjects(input);
+    const userId = (ctx.session?.user as { id?: string } | undefined)?.id;
+    return service.listProjects(input, userId);
   }),
 
   getProjectBySlug: publicProcedure
     .input(z.object({ slug: z.string() }))
     .query(async ({ ctx, input }) => {
       const service = new HubService(ctx.prisma);
-      return service.getProjectBySlug(input.slug);
+      const userId = (ctx.session?.user as { id?: string } | undefined)?.id;
+      return service.getProjectBySlug(input.slug, userId);
     }),
 
   getMyProjects: protectedProcedure.query(async ({ ctx }) => {

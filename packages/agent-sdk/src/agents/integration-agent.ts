@@ -46,7 +46,7 @@ export class IntegrationAgent extends BaseAgent {
     response: string,
   ): IntegrationSuggestion | null {
     const jsonMatch = response.match(/```json\s*([\s\S]*?)```/);
-    if (!jsonMatch) return null;
+    if (!jsonMatch?.[1]) return null;
 
     try {
       const data = JSON.parse(jsonMatch[1]);

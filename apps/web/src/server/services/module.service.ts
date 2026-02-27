@@ -1,6 +1,12 @@
 import { TRPCError } from "@trpc/server";
 import { Prisma, type PrismaClient } from "@forge/db";
 import type { CreateModuleInput, UpdateModuleInput, CreateVersionInput } from "@/lib/validators/module";
+import { PaymentService } from "./payment.service";
+
+export interface PurchaseResult {
+  success: boolean;
+  checkoutUrl?: string;
+}
 
 function slugify(text: string): string {
   return text
@@ -101,6 +107,21 @@ export class ModuleService {
         },
       },
       select: MODULE_LIST_SELECT,
+    });
+
+    // Also create a linked Submission record for tracking in Hub
+    await this.prisma.submission.create({
+      data: {
+        userId: authorId,
+        moduleId: module.id,
+        appName: input.name,
+        companyName: "Independent Developer",
+        version: "1.0.0",
+        about: input.description,
+        labels: input.tags as Prisma.InputJsonValue,
+        fileUrl: input.repositoryUrl || `docker://${slug}`,
+        status: "SUBMITTED",
+      },
     });
 
     return module;
@@ -357,16 +378,33 @@ export class ModuleService {
   async getMyPurchases(userId: string) {
     return this.prisma.purchase.findMany({
       where: { userId, status: "ACTIVE" },
-      include: {
+      select: {
+        id: true,
+        status: true,
+        pricePaid: true,
+        currency: true,
+        subscriptionId: true,
+        purchasedAt: true,
         module: {
-          select: MODULE_LIST_SELECT,
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            shortDescription: true,
+            pricingModel: true,
+            price: true,
+            logoUrl: true,
+            author: {
+              select: { name: true, username: true },
+            },
+          },
         },
       },
       orderBy: { purchasedAt: "desc" },
     });
   }
 
-  async purchase(userId: string, moduleId: string) {
+  async purchase(userId: string, moduleId: string, origin?: string): Promise<PurchaseResult> {
     const module = await this.prisma.module.findUnique({
       where: { id: moduleId },
       select: { id: true, status: true, pricingModel: true, price: true, authorId: true },
@@ -394,11 +432,32 @@ export class ModuleService {
       });
     }
 
-    const purchase = await this.prisma.purchase.create({
+    // Paid modules → redirect to Stripe Checkout
+    if (module.pricingModel !== "FREE") {
+      const paymentService = new PaymentService(this.prisma);
+
+      if (!paymentService.isConfigured()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Payment processing is not available at this time",
+        });
+      }
+
+      const { checkoutUrl } = await paymentService.createCheckoutSession(
+        userId,
+        moduleId,
+        origin || "http://localhost:3000",
+      );
+
+      return { success: true, checkoutUrl };
+    }
+
+    // Free modules → create purchase directly
+    await this.prisma.purchase.create({
       data: {
         userId,
         moduleId,
-        pricePaid: module.price ?? new Prisma.Decimal(0),
+        pricePaid: new Prisma.Decimal(0),
         status: "ACTIVE",
       },
     });
@@ -409,6 +468,6 @@ export class ModuleService {
       data: { downloadCount: { increment: 1 } },
     });
 
-    return purchase;
+    return { success: true };
   }
 }

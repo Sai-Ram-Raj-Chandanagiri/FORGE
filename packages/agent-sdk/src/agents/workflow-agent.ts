@@ -40,7 +40,7 @@ export class WorkflowAgent extends BaseAgent {
     response: string,
   ): WorkflowDefinition | null {
     const jsonMatch = response.match(/```json\s*([\s\S]*?)```/);
-    if (!jsonMatch) return null;
+    if (!jsonMatch?.[1]) return null;
 
     try {
       const data = JSON.parse(jsonMatch[1]);

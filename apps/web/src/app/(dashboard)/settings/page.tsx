@@ -1,7 +1,8 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { Settings } from "lucide-react";
+import Link from "next/link";
+import { Settings, CreditCard, Building2, ChevronRight } from "lucide-react";
 
 export default function SettingsPage() {
   const { data: session } = useSession();
@@ -60,12 +61,38 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-dashed bg-card p-6">
-          <h2 className="mb-2 text-lg font-semibold">More Settings</h2>
-          <p className="text-sm text-muted-foreground">
-            Organization management, billing, connected accounts, and notification preferences
-            will be available in later phases.
-          </p>
+        {/* Quick links */}
+        <div className="space-y-3">
+          <Link
+            href="/settings/billing"
+            className="flex items-center justify-between rounded-xl border bg-card p-5 hover:bg-muted/50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-primary/10 p-2">
+                <CreditCard className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold">Billing & Usage</h3>
+                <p className="text-xs text-muted-foreground">Manage subscriptions, view usage and purchase history</p>
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </Link>
+          <Link
+            href="/settings/organizations"
+            className="flex items-center justify-between rounded-xl border bg-card p-5 hover:bg-muted/50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-primary/10 p-2">
+                <Building2 className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold">Organizations</h3>
+                <p className="text-xs text-muted-foreground">Manage your organizations and team members</p>
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </Link>
         </div>
       </div>
     </div>

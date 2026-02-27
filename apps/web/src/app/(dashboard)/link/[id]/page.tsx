@@ -1,9 +1,8 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import Link from "next/link";
+import { useState } from "react";
 import {
-  ArrowLeft,
   Package,
   Play,
   Square,
@@ -13,7 +12,13 @@ import {
   Settings2,
   Clock,
   Server,
+  Cpu,
+  MemoryStick,
+  Network,
+  Terminal,
+  RefreshCw,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { trpc } from "@/lib/trpc-client";
 import { LogViewer } from "@/components/link/log-viewer";
 
@@ -33,6 +38,25 @@ interface DeploymentDetail {
   module: { id: string; name: string; slug: string; logoUrl: string | null; type: string };
   version: { id: string; version: string; dockerImage: string; configSchema: unknown; minResources: unknown };
   logs: { id: string; level: string; message: string; timestamp: string }[];
+}
+
+interface ContainerStats {
+  cpuPercent: number;
+  memoryUsageMb: number;
+  memoryLimitMb: number;
+  memoryPercent: number;
+  networkRxBytes: number;
+  networkTxBytes: number;
+  blockReadBytes: number;
+  blockWriteBytes: number;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + (sizes[i] ?? "B");
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -68,6 +92,18 @@ export default function DeploymentDetailPage() {
 
   const isPending = startMut.isPending || stopMut.isPending || restartMut.isPending || terminateMut.isPending;
 
+  const [logTab, setLogTab] = useState<"app" | "container">("app");
+
+  const { data: containerStats } = trpc.deployment.getContainerStats.useQuery(
+    { deploymentId: id },
+    { enabled: deployment?.status === "RUNNING", refetchInterval: 10000 },
+  ) as { data: ContainerStats | null | undefined };
+
+  const { data: containerLogs, refetch: refetchContainerLogs } = trpc.deployment.getContainerLogs.useQuery(
+    { deploymentId: id, tail: 100 },
+    { enabled: deployment?.status === "RUNNING" || deployment?.status === "STOPPED" },
+  ) as { data: { logs: string; available: boolean } | undefined; refetch: () => void };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -82,9 +118,7 @@ export default function DeploymentDetailPage() {
       <div className="flex flex-col items-center justify-center py-20">
         <Server className="mb-4 h-12 w-12 text-muted-foreground/50" />
         <h2 className="text-lg font-semibold">Deployment not found</h2>
-        <Link href="/link" className="mt-4 text-sm text-primary hover:underline">
-          Back to FORGE Link
-        </Link>
+        <BackButton fallback="/link" label="Back" />
       </div>
     );
   }
@@ -93,13 +127,7 @@ export default function DeploymentDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link
-        href="/link"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to FORGE Link
-      </Link>
+      <BackButton fallback="/link" label="Back" />
 
       {/* Header */}
       <div className="flex items-start justify-between">
@@ -211,6 +239,50 @@ export default function DeploymentDetailPage() {
         </div>
       </div>
 
+      {/* Live Container Stats */}
+      {deployment.status === "RUNNING" && containerStats && (
+        <section className="rounded-xl border bg-card p-6">
+          <h2 className="mb-4 text-lg font-semibold flex items-center gap-2">
+            <Activity className="h-5 w-5" />
+            Live Container Stats
+            <span className="ml-auto text-xs font-normal text-muted-foreground">Auto-refreshes every 10s</span>
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg border p-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Cpu className="h-4 w-4" />
+                CPU Usage
+              </div>
+              <p className="mt-1 text-2xl font-bold">{containerStats.cpuPercent.toFixed(1)}%</p>
+            </div>
+            <div className="rounded-lg border p-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <MemoryStick className="h-4 w-4" />
+                Memory
+              </div>
+              <p className="mt-1 text-2xl font-bold">{containerStats.memoryUsageMb} MB</p>
+              <p className="text-xs text-muted-foreground">
+                {containerStats.memoryPercent.toFixed(1)}% of {containerStats.memoryLimitMb} MB
+              </p>
+            </div>
+            <div className="rounded-lg border p-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Network className="h-4 w-4" />
+                Network In
+              </div>
+              <p className="mt-1 text-2xl font-bold">{formatBytes(containerStats.networkRxBytes)}</p>
+            </div>
+            <div className="rounded-lg border p-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Network className="h-4 w-4" />
+                Network Out
+              </div>
+              <p className="mt-1 text-2xl font-bold">{formatBytes(containerStats.networkTxBytes)}</p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Configuration */}
       {Object.keys(deployment.configuration).length > 0 && (
         <section className="rounded-xl border bg-card p-6">
@@ -227,11 +299,54 @@ export default function DeploymentDetailPage() {
         </section>
       )}
 
-      {/* Logs */}
+      {/* Logs with tabs */}
       <section className="rounded-xl border bg-card p-6">
-        <h2 className="mb-3 text-lg font-semibold">Logs</h2>
-        <LogViewer logs={deployment.logs} />
-      </section>
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-1 rounded-lg border p-1">
+            <button
+              onClick={() => setLogTab("app")}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                logTab === "app" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Application Logs
+            </button>
+            <button
+              onClick={() => setLogTab("container")}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                logTab === "container" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Terminal className="mr-1 inline h-3.5 w-3.5" />
+              Container Output
+            </button>
+          </div>
+          {logTab === "container" && (
+            <button
+              onClick={() => refetchContainerLogs()}
+              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refresh
+            </button>
+          )}
+        </div>
+
+        {logTab === "app" ? (
+          <LogViewer logs={deployment.logs} />
+        ) : (
+          <div className="rounded-lg bg-[#1e1e2e] p-4 font-mono text-xs text-green-400 max-h-96 overflow-y-auto whitespace-pre-wrap">
+            {containerLogs?.available && containerLogs.logs ? (
+              containerLogs.logs
+            ) : (
+              <span className="text-muted-foreground">
+                {deployment.status === "RUNNING"
+                  ? "No container output available yet..."
+                  : "Container is not running. Start the deployment to see live output."}
+              </span>
+            )}
+          </div>
+        )}</section>
     </div>
   );
 }

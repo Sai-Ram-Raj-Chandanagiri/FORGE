@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Package, Loader2, Rocket, Check } from "lucide-react";
+import { Package, Loader2, Rocket, Check } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { trpc } from "@/lib/trpc-client";
 
 interface PurchaseItem {
@@ -106,13 +107,7 @@ export default function DeployPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <Link
-        href="/link"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to FORGE Link
-      </Link>
+      <BackButton fallback="/link" label="Back" />
 
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-bold">

@@ -2,16 +2,15 @@
 
 import { Suspense, useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import {
   Bot,
   Workflow,
   Activity,
   Plug,
   Send,
-  ArrowLeft,
   Loader2,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { trpc } from "@/lib/trpc-client";
 
 interface ChatMessage {
@@ -171,12 +170,7 @@ function AgentChatContent() {
     <div className="flex h-[calc(100vh-8rem)] flex-col">
       {/* Header */}
       <div className="flex items-center gap-4 border-b pb-4">
-        <Link
-          href="/agents"
-          className="rounded-lg p-2 transition-colors hover:bg-muted"
-        >
-          <ArrowLeft className="h-5 w-5 text-muted-foreground" />
-        </Link>
+        <BackButton fallback="/agents" label="Back" />
         <div className={`rounded-lg p-2.5 ${agent.bgColor}`}>
           <Icon className={`h-6 w-6 ${agent.color}`} />
         </div>

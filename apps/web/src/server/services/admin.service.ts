@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { Prisma, type PrismaClient } from "@forge/db";
 import type {
   ReviewModuleInput,
+  ReviewSubmissionInput,
   ListUsersInput,
   UpdateUserStatusInput,
 } from "@/lib/validators/admin";
@@ -208,6 +209,179 @@ export class AdminService {
         status: true,
       },
     });
+  }
+
+  // ==================== SUBMISSION PIPELINE ====================
+
+  async getSubmissionQueue(page = 1, limit = 20) {
+    const where = { status: { in: ["SUBMITTED" as const, "IN_REVIEW" as const] } };
+
+    const [submissions, total] = await Promise.all([
+      this.prisma.submission.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              email: true,
+              avatarUrl: true,
+            },
+          },
+        },
+        orderBy: { submittedAt: "asc" },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.submission.count({ where }),
+    ]);
+
+    return {
+      submissions,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async reviewSubmission(adminUserId: string, input: ReviewSubmissionInput) {
+    const submission = await this.prisma.submission.findUnique({
+      where: { id: input.submissionId },
+      include: {
+        user: { select: { id: true, name: true, username: true } },
+      },
+    });
+
+    if (!submission) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "Submission not found",
+      });
+    }
+
+    if (!["SUBMITTED", "IN_REVIEW"].includes(submission.status)) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Submission is not pending review",
+      });
+    }
+
+    const isApproved = input.action === "approve";
+
+    if (isApproved) {
+      // Create a new Module + ModuleVersion from the submission
+      const slug =
+        submission.appName
+          .toLowerCase()
+          .replace(/[^\w\s-]/g, "")
+          .replace(/[\s_]+/g, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-|-$/g, "") +
+        "-" +
+        Math.random().toString(36).slice(2, 6);
+
+      const newModule = await this.prisma.module.create({
+        data: {
+          name: submission.appName,
+          slug,
+          shortDescription: submission.about.slice(0, 200),
+          description: submission.about,
+          authorId: submission.userId,
+          status: "PUBLISHED",
+          type: "SINGLE_CONTAINER",
+          pricingModel: "FREE",
+          publishedAt: new Date(),
+          versions: {
+            create: {
+              version: submission.version,
+              changelog: submission.changelog,
+              dockerImage: submission.fileUrl,
+              isLatest: true,
+            },
+          },
+        },
+      });
+
+      // Link the submission to the created module
+      await this.prisma.submission.update({
+        where: { id: input.submissionId },
+        data: {
+          status: "APPROVED",
+          moduleId: newModule.id,
+          reviewNotes: input.reviewNotes,
+          reviewedAt: new Date(),
+          reviewedBy: adminUserId,
+        },
+      });
+
+      // Notify the submitter
+      await this.prisma.notification.create({
+        data: {
+          userId: submission.userId,
+          type: "SUBMISSION_STATUS",
+          title: `Submission "${submission.appName}" approved!`,
+          body: `Your submission "${submission.appName}" has been approved and is now published on the FORGE Store.${input.reviewNotes ? ` Notes: ${input.reviewNotes}` : ""}`,
+          link: `/store/${slug}`,
+        },
+      });
+
+      // Audit log
+      await this.prisma.auditLog.create({
+        data: {
+          userId: adminUserId,
+          action: "SUBMISSION_APPROVED",
+          entityType: "Submission",
+          entityId: input.submissionId,
+          metadata: {
+            appName: submission.appName,
+            moduleId: newModule.id,
+            reviewNotes: input.reviewNotes ?? null,
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      return { status: "APPROVED" as const, moduleId: newModule.id, moduleSlug: slug };
+    } else {
+      // Reject: update submission status
+      await this.prisma.submission.update({
+        where: { id: input.submissionId },
+        data: {
+          status: "REJECTED",
+          reviewNotes: input.reviewNotes,
+          reviewedAt: new Date(),
+          reviewedBy: adminUserId,
+        },
+      });
+
+      // Notify the submitter
+      await this.prisma.notification.create({
+        data: {
+          userId: submission.userId,
+          type: "SUBMISSION_STATUS",
+          title: `Submission "${submission.appName}" was not approved`,
+          body: `Your submission "${submission.appName}" was not approved.${input.reviewNotes ? ` Feedback: ${input.reviewNotes}` : ""} You can update and resubmit.`,
+          link: "/hub/submissions",
+        },
+      });
+
+      // Audit log
+      await this.prisma.auditLog.create({
+        data: {
+          userId: adminUserId,
+          action: "SUBMISSION_REJECTED",
+          entityType: "Submission",
+          entityId: input.submissionId,
+          metadata: {
+            appName: submission.appName,
+            reviewNotes: input.reviewNotes ?? null,
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      return { status: "REJECTED" as const };
+    }
   }
 
   async getSystemMetrics() {

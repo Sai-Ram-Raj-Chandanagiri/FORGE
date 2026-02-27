@@ -1,5 +1,12 @@
 import { TRPCError } from "@trpc/server";
 import { type PrismaClient, Prisma } from "@forge/db";
+import {
+  createOrchestrator,
+  type AgentOrchestrator,
+  type LLMMessage,
+  type AgentType,
+} from "@forge/agent-sdk";
+import { ForgeToolExecutor } from "./forge-tool-executor";
 import type {
   ChatMessageInput,
   CreateWorkflowInput,
@@ -11,6 +18,34 @@ export interface ConversationMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+}
+
+// Singleton orchestrator — lazy-initialized on first chat() call
+let orchestratorInstance: AgentOrchestrator | null = null;
+let orchestratorChecked = false;
+
+function getOrchestrator(prisma: PrismaClient): AgentOrchestrator | null {
+  if (orchestratorChecked) return orchestratorInstance;
+  orchestratorChecked = true;
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.warn(
+      "[AgentService] GEMINI_API_KEY not set — agents will use placeholder responses. " +
+        "Get a free key at https://aistudio.google.com/apikey",
+    );
+    return null;
+  }
+
+  const toolExecutor = new ForgeToolExecutor(prisma);
+  orchestratorInstance = createOrchestrator(apiKey, toolExecutor);
+  return orchestratorInstance;
+}
+
+// Reset singleton (used by tests)
+export function _resetOrchestrator() {
+  orchestratorInstance = null;
+  orchestratorChecked = false;
 }
 
 export class AgentService {
@@ -60,10 +95,34 @@ export class AgentService {
       },
     ];
 
-    // Generate agent response
-    // In production, this calls the AgentOrchestrator with the LLM.
-    // For now, generate a contextual placeholder response.
-    const agentResponse = generateAgentResponse(agentType, message);
+    // Generate agent response — real LLM or fallback
+    let agentResponse: string;
+    let toolResults: Record<string, unknown>[] | undefined;
+
+    const orchestrator = getOrchestrator(this.prisma);
+
+    if (orchestrator) {
+      // Convert ConversationMessage[] to LLMMessage[] for the orchestrator
+      const llmMessages: LLMMessage[] = updatedMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      try {
+        const result = await orchestrator.chat(
+          agentType as AgentType,
+          llmMessages,
+          { userId, conversationId: conversation.id },
+        );
+        agentResponse = result.response;
+        toolResults = result.toolResults;
+      } catch (err) {
+        console.error("[AgentService] LLM call failed, using fallback:", err);
+        agentResponse = generateAgentResponse(agentType, message);
+      }
+    } else {
+      agentResponse = generateAgentResponse(agentType, message);
+    }
 
     updatedMessages.push({
       role: "assistant" as const,
@@ -79,13 +138,16 @@ export class AgentService {
       },
     });
 
-    // Log the action
+    // Log the action (include tool results if any)
     await this.prisma.agentAction.create({
       data: {
         conversationId: conversation.id,
-        actionType: "chat",
+        actionType: toolResults ? "chat_with_tools" : "chat",
         payload: { message } as Prisma.InputJsonValue,
-        result: { response: agentResponse } as Prisma.InputJsonValue,
+        result: {
+          response: agentResponse,
+          ...(toolResults ? { toolResults } : {}),
+        } as Prisma.InputJsonValue,
       },
     });
 
@@ -219,7 +281,6 @@ export class AgentService {
   // ==================== INSIGHTS ====================
 
   async getInsights(userId: string) {
-    // Get deployment count and workflow stats for insights
     const [deploymentCount, workflowCount, conversationCount] =
       await Promise.all([
         this.prisma.deployment.count({
@@ -254,9 +315,10 @@ function getLastMessage(messages: ConversationMessage[]): string | null {
   return last.content.slice(0, 100) + (last.content.length > 100 ? "..." : "");
 }
 
+/**
+ * Placeholder responses — used when GEMINI_API_KEY is not configured.
+ */
 function generateAgentResponse(agentType: string, message: string): string {
-  // Placeholder responses until LLM integration is connected.
-  // In production, this calls AgentOrchestrator.chat() with Gemini.
   const lowerMessage = message.toLowerCase();
 
   switch (agentType) {
@@ -267,19 +329,19 @@ function generateAgentResponse(agentType: string, message: string): string {
       if (lowerMessage.includes("startup") || lowerMessage.includes("business")) {
         return "For a startup, I'd recommend:\n\n1. **CRM / Contact Management** — Manage leads and customer relationships\n2. **Project & Task Management** — Track tasks with Kanban boards\n3. **Financial / Expense Tracker** — Monitor expenses and invoicing\n4. **Communication Hub** — Internal team messaging\n\nHow large is your team? This will help me fine-tune the deployment configuration.";
       }
-      return "I'd love to help you set up FORGE! Could you tell me more about:\n1. What type of organization are you? (NGO, startup, enterprise, etc.)\n2. How large is your team?\n3. What are the main challenges you're looking to solve?";
+      return "I'd love to help you set up FORGE! Could you tell me more about:\n1. What type of organization are you? (NGO, startup, enterprise, etc.)\n2. How large is your team?\n3. What are the main challenges you're looking to solve?\n\n*Note: Connect a Gemini API key for AI-powered recommendations.*";
 
     case "workflow":
       if (lowerMessage.includes("donor") || lowerMessage.includes("crm")) {
         return 'I can help you create that automation! Here\'s what I understand:\n\n**Trigger:** New record created in CRM module\n**Action:** Create corresponding record in Donor Manager + Send welcome notification\n\nI\'ll need to verify that both modules are deployed and accessible. Would you like me to proceed with creating this workflow?';
       }
-      return "I can help you create cross-module automations. Try describing what you'd like to automate in plain language, for example:\n\n- \"When a new donor is added in CRM, send a welcome email\"\n- \"Every Monday, generate a weekly analytics report\"\n- \"If a deployment fails, notify me and try restarting it\"";
+      return "I can help you create cross-module automations. Try describing what you'd like to automate in plain language, for example:\n\n- \"When a new donor is added in CRM, send a welcome email\"\n- \"Every Monday, generate a weekly analytics report\"\n- \"If a deployment fails, notify me and try restarting it\"\n\n*Note: Connect a Gemini API key for AI-powered workflow generation.*";
 
     case "monitor":
-      return `Here's a quick health overview of your deployments:\n\nI'll analyze your deployment metrics to check for:\n- Resource usage anomalies (CPU, memory spikes)\n- Health check failures\n- Cost optimization opportunities\n- Scaling recommendations\n\nTo provide detailed insights, I need access to your deployment metrics. Would you like me to run a full analysis?`;
+      return "Here's a quick health overview of your deployments:\n\nI'll analyze your deployment metrics to check for:\n- Resource usage anomalies (CPU, memory spikes)\n- Health check failures\n- Cost optimization opportunities\n- Scaling recommendations\n\nTo provide detailed insights, I need access to your deployment metrics. Would you like me to run a full analysis?\n\n*Note: Connect a Gemini API key for AI-powered monitoring insights.*";
 
     case "integration":
-      return "I can help you connect your deployed modules! Here's what I can do:\n\n- **Analyze** your current deployments for integration opportunities\n- **Create** data bridges between modules (e.g., CRM → Email Marketing)\n- **Generate** Docker Compose configs for connected services\n\nWhich modules would you like to connect, or should I analyze your deployments for suggestions?";
+      return "I can help you connect your deployed modules! Here's what I can do:\n\n- **Analyze** your current deployments for integration opportunities\n- **Create** data bridges between modules (e.g., CRM → Email Marketing)\n- **Generate** Docker Compose configs for connected services\n\nWhich modules would you like to connect, or should I analyze your deployments for suggestions?\n\n*Note: Connect a Gemini API key for AI-powered integration analysis.*";
 
     default:
       return "I'm here to help! Please let me know what you'd like to do.";

@@ -19,6 +19,13 @@ export const updateUserStatusSchema = z.object({
   status: z.enum(["ACTIVE", "SUSPENDED"]),
 });
 
+export const reviewSubmissionSchema = z.object({
+  submissionId: z.string(),
+  action: z.enum(["approve", "reject"]),
+  reviewNotes: z.string().max(2000).optional(),
+});
+
 export type ReviewModuleInput = z.infer<typeof reviewModuleSchema>;
 export type ListUsersInput = z.infer<typeof listUsersSchema>;
 export type UpdateUserStatusInput = z.infer<typeof updateUserStatusSchema>;
+export type ReviewSubmissionInput = z.infer<typeof reviewSubmissionSchema>;

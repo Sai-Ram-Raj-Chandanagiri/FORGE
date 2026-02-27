@@ -3,7 +3,6 @@
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowLeft,
   User,
   Calendar,
   Package,
@@ -13,6 +12,7 @@ import {
   Shield,
   Award,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { trpc } from "@/lib/trpc-client";
 
 interface PublishedModule {
@@ -122,13 +122,7 @@ export default function DeveloperProfilePage() {
         <p className="mt-1 text-sm text-muted-foreground">
           No developer with the username &quot;{username}&quot; was found.
         </p>
-        <Link
-          href="/hub"
-          className="mt-4 inline-flex items-center gap-2 text-sm text-primary hover:underline"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Hub
-        </Link>
+        <BackButton fallback="/hub" label="Back" />
       </div>
     );
   }
@@ -139,13 +133,7 @@ export default function DeveloperProfilePage() {
   return (
     <div className="space-y-6">
       {/* Back link */}
-      <Link
-        href="/hub"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Hub
-      </Link>
+      <BackButton fallback="/hub" label="Back" />
 
       {/* Profile header */}
       <div className="flex flex-col items-center gap-6 rounded-xl border bg-card p-8 sm:flex-row sm:items-start">

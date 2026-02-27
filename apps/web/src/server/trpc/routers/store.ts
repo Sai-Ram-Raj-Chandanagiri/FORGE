@@ -3,6 +3,7 @@ import { router, publicProcedure, protectedProcedure } from "../trpc";
 import { searchModulesSchema } from "@/lib/validators/module";
 import { SearchService } from "@/server/services/search.service";
 import { ModuleService } from "@/server/services/module.service";
+import { PaymentService } from "@/server/services/payment.service";
 
 export const storeRouter = router({
   browse: publicProcedure.input(searchModulesSchema).query(async ({ ctx, input }) => {
@@ -54,10 +55,29 @@ export const storeRouter = router({
     return moduleService.getMyPurchases(ctx.user.id);
   }),
 
+  checkPurchase: protectedProcedure
+    .input(z.object({ moduleId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const existing = await ctx.prisma.purchase.findFirst({
+        where: { userId: ctx.user.id, moduleId: input.moduleId, status: "ACTIVE" },
+        select: { id: true },
+      });
+      return { purchased: !!existing };
+    }),
+
   purchase: protectedProcedure
     .input(z.object({ moduleId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const moduleService = new ModuleService(ctx.prisma);
-      return moduleService.purchase(ctx.user.id, input.moduleId);
+      const origin = process.env.NEXTAUTH_URL || "http://localhost:3000";
+      return moduleService.purchase(ctx.user.id, input.moduleId, origin);
+    }),
+
+  cancelSubscription: protectedProcedure
+    .input(z.object({ purchaseId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const paymentService = new PaymentService(ctx.prisma);
+      await paymentService.cancelSubscription(ctx.user.id, input.purchaseId);
+      return { success: true };
     }),
 });

@@ -1,11 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import {
   Users,
   Shield,
-  ArrowLeft,
   Search,
   UserCheck,
   UserX,
@@ -13,6 +11,7 @@ import {
   ChevronRight,
   Loader2,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { trpc } from "@/lib/trpc-client";
 
 interface UserItem {
@@ -100,13 +99,7 @@ export default function AdminUsersPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <Link
-          href="/admin"
-          className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Admin
-        </Link>
+        <BackButton fallback="/admin" label="Back" />
         <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
           <Users className="h-8 w-8 text-primary" />
           User Management

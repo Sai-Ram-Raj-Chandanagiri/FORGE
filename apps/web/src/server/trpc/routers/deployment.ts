@@ -62,6 +62,26 @@ export const deploymentRouter = router({
       return service.getLogs(ctx.user.id, input.deploymentId, input.limit, input.cursor);
     }),
 
+  getContainerLogs: protectedProcedure
+    .input(
+      z.object({
+        deploymentId: z.string(),
+        tail: z.number().int().min(1).max(500).default(100),
+        since: z.number().int().optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const service = new DeploymentService(ctx.prisma);
+      return service.getContainerLogs(ctx.user.id, input.deploymentId, input.tail, input.since);
+    }),
+
+  getContainerStats: protectedProcedure
+    .input(z.object({ deploymentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const service = new DeploymentService(ctx.prisma);
+      return service.getContainerStats(ctx.user.id, input.deploymentId);
+    }),
+
   getStats: protectedProcedure.query(async ({ ctx }) => {
     const service = new DeploymentService(ctx.prisma);
     return service.getStats(ctx.user.id);

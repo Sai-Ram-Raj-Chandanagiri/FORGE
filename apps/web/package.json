@@ -12,8 +12,10 @@
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.0",
+    "@forge/agent-sdk": "workspace:*",
     "@forge/auth": "workspace:*",
     "@forge/db": "workspace:*",
+    "@forge/docker-manager": "workspace:*",
     "@forge/logger": "workspace:*",
     "@forge/shared": "workspace:*",
     "@radix-ui/react-avatar": "^1.1.0",
@@ -40,6 +42,7 @@
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "sonner": "^1.7.0",
+    "stripe": "^20.4.0",
     "superjson": "^2.2.0",
     "tailwind-merge": "^2.5.0",
     "zod": "^3.23.0"

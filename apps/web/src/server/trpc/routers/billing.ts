@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { PaymentService } from "@/server/services/payment.service";
 
 export const billingRouter = router({
   getUsageSummary: protectedProcedure.query(async ({ ctx }) => {
@@ -125,7 +126,7 @@ export const billingRouter = router({
       where: { userId: ctx.user.id },
       include: {
         module: {
-          select: { name: true },
+          select: { name: true, slug: true, pricingModel: true },
         },
       },
       orderBy: { purchasedAt: "desc" },
@@ -134,10 +135,21 @@ export const billingRouter = router({
     return purchases.map((p) => ({
       id: p.id,
       moduleName: p.module.name,
+      moduleSlug: p.module.slug,
+      pricingModel: p.module.pricingModel,
       pricePaid: p.pricePaid,
       currency: p.currency,
       purchasedAt: p.purchasedAt,
       status: p.status,
+      subscriptionId: p.subscriptionId,
     }));
   }),
+
+  cancelSubscription: protectedProcedure
+    .input(z.object({ purchaseId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const paymentService = new PaymentService(ctx.prisma);
+      await paymentService.cancelSubscription(ctx.user.id, input.purchaseId);
+      return { success: true };
+    }),
 });

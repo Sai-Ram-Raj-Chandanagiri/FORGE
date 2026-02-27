@@ -10,8 +10,14 @@ export const createWorkflowSchema = z.object({
   name: z.string().min(2).max(100),
   description: z.string().max(2000).optional(),
   triggerEvent: z.string(),
-  conditions: z.unknown(),
-  actions: z.unknown(),
+  conditions: z.unknown().refine(
+    (val) => { try { return JSON.stringify(val ?? null).length <= 50000; } catch { return false; } },
+    { message: "Conditions data too large (max 50KB)" },
+  ),
+  actions: z.unknown().refine(
+    (val) => { try { return JSON.stringify(val ?? null).length <= 50000; } catch { return false; } },
+    { message: "Actions data too large (max 50KB)" },
+  ),
 });
 
 export const toggleWorkflowSchema = z.object({

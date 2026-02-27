@@ -217,7 +217,7 @@ async function main() {
         moduleId: sampleModule.id,
         version: "1.0.0",
         changelog: "Initial release with core CRM features.",
-        dockerImage: "forge/crm:1.0.0",
+        dockerImage: "nginx:alpine",
         configSchema: {
           type: "object",
           properties: {
@@ -234,6 +234,218 @@ async function main() {
 
     console.log(`  Created sample module: ${sampleModule.name}`);
   }
+
+  // Create paid modules for testing Stripe integration
+  const analyticsCategory = await prisma.category.findUnique({ where: { slug: "analytics" } });
+
+  const paidModule1 = await prisma.module.upsert({
+    where: { slug: "forge-analytics-pro" },
+    update: {},
+    create: {
+      name: "FORGE Analytics Pro",
+      slug: "forge-analytics-pro",
+      shortDescription: "Advanced analytics dashboard with real-time insights and custom reports.",
+      description:
+        "# FORGE Analytics Pro\n\nEnterprise-grade analytics module for data-driven decision making.\n\n## Features\n- Real-time event tracking\n- Custom report builder\n- Funnel analysis\n- Cohort retention charts\n- REST & GraphQL APIs\n- Export to CSV/PDF",
+      authorId: developer.id,
+      status: "PUBLISHED",
+      type: "SINGLE_CONTAINER",
+      pricingModel: "ONE_TIME",
+      price: 25.00,
+      currency: "USD",
+      featured: true,
+      downloadCount: 18,
+      averageRating: 4.2,
+      reviewCount: 5,
+      publishedAt: new Date(),
+    },
+  });
+
+  if (analyticsCategory) {
+    await prisma.moduleCategory.upsert({
+      where: {
+        moduleId_categoryId: {
+          moduleId: paidModule1.id,
+          categoryId: analyticsCategory.id,
+        },
+      },
+      update: {},
+      create: {
+        moduleId: paidModule1.id,
+        categoryId: analyticsCategory.id,
+      },
+    });
+  }
+
+  await prisma.moduleVersion.upsert({
+    where: {
+      moduleId_version: {
+        moduleId: paidModule1.id,
+        version: "2.1.0",
+      },
+    },
+    update: {},
+    create: {
+      moduleId: paidModule1.id,
+      version: "2.1.0",
+      changelog: "Added funnel analysis and cohort retention charts.",
+      dockerImage: "nginx:alpine",
+      configSchema: {
+        type: "object",
+        properties: {
+          ANALYTICS_KEY: { type: "string" },
+          RETENTION_DAYS: { type: "number", default: 90 },
+        },
+        required: ["ANALYTICS_KEY"],
+      },
+      minResources: { cpu: "1.0", memory: "512Mi" },
+      isLatest: true,
+    },
+  });
+  console.log(`  Created paid module: ${paidModule1.name} ($25 ONE_TIME)`);
+
+  const paidModule2 = await prisma.module.upsert({
+    where: { slug: "forge-mail-service" },
+    update: {},
+    create: {
+      name: "FORGE Mail Service",
+      slug: "forge-mail-service",
+      shortDescription: "Transactional email service with templates, queues, and delivery tracking.",
+      description:
+        "# FORGE Mail Service\n\nReliable transactional email delivery for your applications.\n\n## Features\n- Template engine with Handlebars\n- Email queue with retry logic\n- Delivery & open tracking\n- DKIM/SPF configuration\n- Webhook notifications",
+      authorId: developer.id,
+      status: "PUBLISHED",
+      type: "MULTI_CONTAINER",
+      pricingModel: "SUBSCRIPTION_MONTHLY",
+      price: 9.99,
+      currency: "USD",
+      featured: false,
+      downloadCount: 7,
+      averageRating: 4.8,
+      reviewCount: 2,
+      publishedAt: new Date(),
+    },
+  });
+
+  await prisma.moduleVersion.upsert({
+    where: {
+      moduleId_version: {
+        moduleId: paidModule2.id,
+        version: "1.0.0",
+      },
+    },
+    update: {},
+    create: {
+      moduleId: paidModule2.id,
+      version: "1.0.0",
+      changelog: "Initial release with core email delivery features.",
+      dockerImage: "nginx:alpine",
+      configSchema: {
+        type: "object",
+        properties: {
+          SMTP_HOST: { type: "string" },
+          SMTP_PORT: { type: "number", default: 587 },
+          FROM_EMAIL: { type: "string" },
+        },
+        required: ["SMTP_HOST", "FROM_EMAIL"],
+      },
+      minResources: { cpu: "0.5", memory: "256Mi" },
+      isLatest: true,
+    },
+  });
+  console.log(`  Created paid module: ${paidModule2.name} ($9.99/mo SUBSCRIPTION)`);
+
+  // ===== Hub Projects =====
+  const openSourceTag = await prisma.tag.findUnique({ where: { slug: "open-source" } });
+  const dockerTag = await prisma.tag.findUnique({ where: { slug: "docker" } });
+  const automationTag = await prisma.tag.findUnique({ where: { slug: "automation" } });
+  const aiTag = await prisma.tag.findUnique({ where: { slug: "ai-powered" } });
+
+  const project1 = await prisma.project.upsert({
+    where: { slug: "forge-crm-extensions" },
+    update: {},
+    create: {
+      name: "FORGE CRM Extensions",
+      slug: "forge-crm-extensions",
+      description:
+        "Community extensions pack for FORGE CRM — adds bulk import, advanced filters, and pipeline analytics.",
+      authorId: developer.id,
+      isPublic: true,
+      status: "ACTIVE",
+      stars: 12,
+      repositoryUrl: "https://github.com/demo/forge-crm-extensions",
+      tags: {
+        create: [
+          ...(openSourceTag ? [{ tagId: openSourceTag.id }] : []),
+          ...(dockerTag ? [{ tagId: dockerTag.id }] : []),
+        ],
+      },
+    },
+  });
+  console.log(`  Created project: ${project1.name}`);
+
+  const project2 = await prisma.project.upsert({
+    where: { slug: "donor-analytics-dashboard" },
+    update: {},
+    create: {
+      name: "Donor Analytics Dashboard",
+      slug: "donor-analytics-dashboard",
+      description:
+        "A real-time analytics dashboard for tracking donor engagement, campaign ROI, and fundraising trends. Built with Chart.js and FORGE modules.",
+      authorId: developer.id,
+      isPublic: true,
+      status: "ACTIVE",
+      stars: 8,
+      tags: {
+        create: [
+          ...(aiTag ? [{ tagId: aiTag.id }] : []),
+          ...(automationTag ? [{ tagId: automationTag.id }] : []),
+        ],
+      },
+    },
+  });
+  console.log(`  Created project: ${project2.name}`);
+
+  const project3 = await prisma.project.upsert({
+    where: { slug: "volunteer-scheduler-pro" },
+    update: {},
+    create: {
+      name: "Volunteer Scheduler Pro",
+      slug: "volunteer-scheduler-pro",
+      description:
+        "Smart volunteer scheduling tool with shift management, availability tracking, and automated reminders. Ideal for NGOs managing large volunteer pools.",
+      authorId: admin.id,
+      isPublic: true,
+      status: "ACTIVE",
+      stars: 5,
+      tags: {
+        create: [
+          ...(automationTag ? [{ tagId: automationTag.id }] : []),
+        ],
+      },
+    },
+  });
+  console.log(`  Created project: ${project3.name}`);
+
+  // ===== Sample Submission (for admin review testing) =====
+  await prisma.submission.upsert({
+    where: { id: "seed-submission-1" },
+    update: {},
+    create: {
+      id: "seed-submission-1",
+      userId: developer.id,
+      appName: "Expense Tracker Lite",
+      companyName: "Demo Dev Studio",
+      version: "1.0.0",
+      about:
+        "A lightweight expense tracking module for small teams. Features include receipt scanning, category-based reporting, and CSV export. Perfect for NGOs needing simple financial oversight.",
+      changelog: "Initial release with core expense tracking features.",
+      labels: ["finance", "reporting", "ngo"],
+      fileUrl: "nginx:alpine",
+      status: "SUBMITTED",
+    },
+  });
+  console.log("  Created sample submission: Expense Tracker Lite");
 
   console.log("Seed completed successfully.");
 }

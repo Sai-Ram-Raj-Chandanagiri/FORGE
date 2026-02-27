@@ -57,7 +57,7 @@ export class HubService {
     });
   }
 
-  async listProjects(input: ListProjectsInput) {
+  async listProjects(input: ListProjectsInput, userId?: string) {
     const where: Record<string, unknown> = {
       isPublic: true,
       status: "ACTIVE",
@@ -94,7 +94,10 @@ export class HubService {
         include: {
           author: { select: { id: true, name: true, username: true, avatarUrl: true } },
           tags: { include: { tag: { select: { name: true, slug: true } } } },
-          _count: { select: { comments: true, collaborators: true } },
+          _count: { select: { comments: true, collaborators: true, starredBy: true } },
+          ...(userId
+            ? { starredBy: { where: { userId }, select: { id: true }, take: 1 } }
+            : {}),
         },
         orderBy,
         skip,
@@ -103,11 +106,16 @@ export class HubService {
       this.prisma.project.count({ where }),
     ]);
 
-    return { projects, total, page: input.page, totalPages: Math.ceil(total / input.limit) };
+    const projectsWithStarred = projects.map((p) => ({
+      ...p,
+      isStarred: userId ? (p as unknown as { starredBy: unknown[] }).starredBy.length > 0 : false,
+    }));
+
+    return { projects: projectsWithStarred, total, page: input.page, totalPages: Math.ceil(total / input.limit) };
   }
 
-  async getProjectBySlug(slug: string) {
-    return this.prisma.project.findUnique({
+  async getProjectBySlug(slug: string, userId?: string) {
+    const project = await this.prisma.project.findUnique({
       where: { slug },
       include: {
         author: { select: { id: true, name: true, username: true, avatarUrl: true, bio: true } },
@@ -131,9 +139,19 @@ export class HubService {
           orderBy: { createdAt: "desc" },
           take: 20,
         },
-        _count: { select: { comments: true, collaborators: true } },
+        _count: { select: { comments: true, collaborators: true, starredBy: true } },
+        ...(userId
+          ? { starredBy: { where: { userId }, select: { id: true }, take: 1 } }
+          : {}),
       },
     });
+
+    if (!project) return null;
+
+    return {
+      ...project,
+      isStarred: userId ? (project as unknown as { starredBy: unknown[] }).starredBy.length > 0 : false,
+    };
   }
 
   async getMyProjects(userId: string) {
@@ -142,19 +160,52 @@ export class HubService {
       include: {
         author: { select: { id: true, name: true, username: true, avatarUrl: true } },
         tags: { include: { tag: { select: { name: true, slug: true } } } },
-        _count: { select: { comments: true, collaborators: true } },
+        _count: { select: { comments: true, collaborators: true, starredBy: true } },
       },
       orderBy: { updatedAt: "desc" },
     });
   }
 
   async starProject(userId: string, projectId: string) {
-    // Simple increment — in production you'd have a UserStar join table
-    await this.prisma.project.update({
+    const project = await this.prisma.project.findUnique({
       where: { id: projectId },
-      data: { stars: { increment: 1 } },
+      select: { id: true, stars: true },
     });
-    return { success: true };
+
+    if (!project) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+    }
+
+    // Check if user already starred
+    const existing = await this.prisma.projectStar.findUnique({
+      where: { userId_projectId: { userId, projectId } },
+    });
+
+    if (existing) {
+      // Unstar: delete record and decrement count
+      await this.prisma.$transaction([
+        this.prisma.projectStar.delete({
+          where: { id: existing.id },
+        }),
+        this.prisma.project.update({
+          where: { id: projectId },
+          data: { stars: { decrement: 1 } },
+        }),
+      ]);
+      return { starred: false, stars: Math.max(0, project.stars - 1) };
+    } else {
+      // Star: create record and increment count
+      await this.prisma.$transaction([
+        this.prisma.projectStar.create({
+          data: { userId, projectId },
+        }),
+        this.prisma.project.update({
+          where: { id: projectId },
+          data: { stars: { increment: 1 } },
+        }),
+      ]);
+      return { starred: true, stars: project.stars + 1 };
+    }
   }
 
   // ==================== COMMENTS ====================
@@ -202,10 +253,30 @@ export class HubService {
   }
 
   async getMySubmissions(userId: string) {
-    return this.prisma.submission.findMany({
+    const submissions = await this.prisma.submission.findMany({
       where: { userId },
       orderBy: { submittedAt: "desc" },
     });
+
+    // Enrich with module slugs for submissions linked to modules
+    const moduleIds = submissions
+      .map((s) => s.moduleId)
+      .filter((id): id is string => id != null);
+
+    const modules =
+      moduleIds.length > 0
+        ? await this.prisma.module.findMany({
+            where: { id: { in: moduleIds } },
+            select: { id: true, slug: true },
+          })
+        : [];
+
+    const moduleSlugMap = new Map(modules.map((m) => [m.id, m.slug]));
+
+    return submissions.map((s) => ({
+      ...s,
+      moduleSlug: s.moduleId ? (moduleSlugMap.get(s.moduleId) ?? null) : null,
+    }));
   }
 
   // ==================== DEVELOPER PROFILES ====================

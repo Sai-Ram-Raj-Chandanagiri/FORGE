@@ -21,7 +21,7 @@ export class GeminiProvider implements LLMProvider {
 
   constructor(config: LLMProviderConfig) {
     this.client = new GoogleGenAI({ apiKey: config.apiKey });
-    this.model = config.model || "gemini-2.0-flash";
+    this.model = config.model || "gemini-3-flash-preview";
     this.defaultMaxTokens = config.maxTokens ?? 4096;
     this.defaultTemperature = config.temperature ?? 0.7;
   }
@@ -101,9 +101,9 @@ export class GeminiProvider implements LLMProvider {
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
         usage: response.usageMetadata
           ? {
-              inputTokens: response.usageMetadata.promptTokenCount ?? 0,
-              outputTokens: response.usageMetadata.candidatesTokenCount ?? 0,
-            }
+            inputTokens: response.usageMetadata.promptTokenCount ?? 0,
+            outputTokens: response.usageMetadata.candidatesTokenCount ?? 0,
+          }
           : undefined,
         finishReason,
       };

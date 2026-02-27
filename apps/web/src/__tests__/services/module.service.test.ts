@@ -354,52 +354,7 @@ describe("ModuleService", () => {
   // purchase
   // -----------------------------------------------------------------------
   describe("purchase", () => {
-    it("should create a purchase and increment download count", async () => {
-      const userId = "user-buyer";
-      const moduleId = "mod-1";
-
-      prisma.module.findUnique.mockResolvedValue({
-        id: moduleId,
-        status: "PUBLISHED",
-        pricingModel: "ONE_TIME",
-        price: new Prisma.Decimal(10),
-        authorId: "user-author",
-      });
-
-      prisma.purchase.findFirst.mockResolvedValue(null);
-
-      const mockPurchase = {
-        id: "purchase-1",
-        userId,
-        moduleId,
-        pricePaid: new Prisma.Decimal(10),
-        status: "ACTIVE",
-      };
-      prisma.purchase.create.mockResolvedValue(mockPurchase);
-      prisma.module.update.mockResolvedValue({});
-
-      const result = await service.purchase(userId, moduleId);
-
-      expect(result).toEqual(mockPurchase);
-
-      // Purchase was created with correct price
-      expect(prisma.purchase.create).toHaveBeenCalledWith({
-        data: {
-          userId,
-          moduleId,
-          pricePaid: expect.any(Prisma.Decimal),
-          status: "ACTIVE",
-        },
-      });
-
-      // Download count was incremented
-      expect(prisma.module.update).toHaveBeenCalledWith({
-        where: { id: moduleId },
-        data: { downloadCount: { increment: 1 } },
-      });
-    });
-
-    it("should use Decimal(0) when module price is null (free module)", async () => {
+    it("should create a free purchase and return success", async () => {
       const userId = "user-buyer";
       const moduleId = "mod-1";
 
@@ -421,10 +376,51 @@ describe("ModuleService", () => {
       });
       prisma.module.update.mockResolvedValue({});
 
-      await service.purchase(userId, moduleId);
+      const result = await service.purchase(userId, moduleId);
 
-      const createCall = prisma.purchase.create.mock.calls[0][0];
-      expect(createCall.data.pricePaid.toString()).toBe("0");
+      expect(result).toEqual({ success: true });
+
+      // Purchase was created with price 0
+      expect(prisma.purchase.create).toHaveBeenCalledWith({
+        data: {
+          userId,
+          moduleId,
+          pricePaid: expect.any(Prisma.Decimal),
+          status: "ACTIVE",
+        },
+      });
+
+      // Download count was incremented
+      expect(prisma.module.update).toHaveBeenCalledWith({
+        where: { id: moduleId },
+        data: { downloadCount: { increment: 1 } },
+      });
+    });
+
+    it("should throw BAD_REQUEST for paid module when Stripe is not configured", async () => {
+      const userId = "user-buyer";
+      const moduleId = "mod-1";
+
+      // Ensure Stripe is not configured
+      delete process.env.STRIPE_SECRET_KEY;
+
+      prisma.module.findUnique.mockResolvedValue({
+        id: moduleId,
+        status: "PUBLISHED",
+        pricingModel: "ONE_TIME",
+        price: new Prisma.Decimal(10),
+        authorId: "user-author",
+      });
+
+      prisma.purchase.findFirst.mockResolvedValue(null);
+
+      await expect(service.purchase(userId, moduleId)).rejects.toThrow(TRPCError);
+      await expect(service.purchase(userId, moduleId)).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+      });
+
+      // Should not create a purchase directly
+      expect(prisma.purchase.create).not.toHaveBeenCalled();
     });
 
     it("should throw NOT_FOUND if module is not published", async () => {

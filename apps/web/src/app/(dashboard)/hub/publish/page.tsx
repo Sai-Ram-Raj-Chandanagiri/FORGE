@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   ArrowLeft,
   ArrowRight,
@@ -14,6 +13,7 @@ import {
   Loader2,
   Upload,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { trpc } from "@/lib/trpc-client";
 
 type Step = "metadata" | "docker" | "review";
@@ -139,7 +139,7 @@ export default function PublishModulePage() {
         changelog: changelog || undefined,
       });
 
-      router.push("/store/my-modules");
+      router.push("/hub/submissions");
     } catch {
       // Error displayed by tRPC
     }
@@ -149,13 +149,7 @@ export default function PublishModulePage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <Link
-        href="/hub"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Hub
-      </Link>
+      <BackButton fallback="/hub" label="Back" />
 
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-bold">

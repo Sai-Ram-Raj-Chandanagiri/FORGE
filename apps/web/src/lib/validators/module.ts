@@ -3,14 +3,17 @@ import { z } from "zod";
 export const createModuleSchema = z.object({
   name: z
     .string()
+    .trim()
     .min(2, "Name must be at least 2 characters")
     .max(100, "Name must be at most 100 characters"),
   shortDescription: z
     .string()
+    .trim()
     .min(10, "Short description must be at least 10 characters")
     .max(200, "Short description must be at most 200 characters"),
   description: z
     .string()
+    .trim()
     .min(50, "Description must be at least 50 characters")
     .max(10000, "Description must be at most 10,000 characters"),
   type: z.enum(["SINGLE_CONTAINER", "MULTI_CONTAINER"]),
@@ -33,9 +36,9 @@ export const createModuleSchema = z.object({
 
 export const updateModuleSchema = z.object({
   id: z.string(),
-  name: z.string().min(2).max(100).optional(),
-  shortDescription: z.string().min(10).max(200).optional(),
-  description: z.string().min(50).max(10000).optional(),
+  name: z.string().trim().min(2).max(100).optional(),
+  shortDescription: z.string().trim().min(10).max(200).optional(),
+  description: z.string().trim().min(50).max(10000).optional(),
   pricingModel: z
     .enum(["FREE", "ONE_TIME", "SUBSCRIPTION_MONTHLY", "SUBSCRIPTION_YEARLY", "USAGE_BASED"])
     .optional(),
@@ -85,15 +88,15 @@ export const searchModulesSchema = z.object({
 export const createReviewSchema = z.object({
   moduleId: z.string(),
   rating: z.number().int().min(1).max(5),
-  title: z.string().min(3).max(100).optional(),
-  body: z.string().min(10).max(2000).optional(),
+  title: z.string().trim().min(3).max(100).optional(),
+  body: z.string().trim().min(10).max(2000).optional(),
 });
 
 export const updateReviewSchema = z.object({
   moduleId: z.string(),
   rating: z.number().int().min(1).max(5).optional(),
-  title: z.string().min(3).max(100).optional(),
-  body: z.string().min(10).max(2000).optional(),
+  title: z.string().trim().min(3).max(100).optional(),
+  body: z.string().trim().min(10).max(2000).optional(),
 });
 
 export type CreateModuleInput = z.infer<typeof createModuleSchema>;

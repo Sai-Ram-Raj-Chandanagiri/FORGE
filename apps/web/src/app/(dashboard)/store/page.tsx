@@ -34,7 +34,7 @@ function StoreContent() {
   const searchParams = useSearchParams();
   const query = searchParams.get("q") || undefined;
   const categorySlug = searchParams.get("category") || undefined;
-  const pricingModel = searchParams.get("pricing") as
+  const pricingModel = (searchParams.get("pricing") || undefined) as
     | "FREE"
     | "ONE_TIME"
     | "SUBSCRIPTION_MONTHLY"
