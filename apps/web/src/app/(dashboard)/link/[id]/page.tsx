@@ -71,7 +71,13 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 export default function DeploymentDetailPage() {
   const { id } = useParams<{ id: string }>();
 
-  const { data: deployment, isLoading } = trpc.deployment.getById.useQuery({ id }) as {
+  const { data: deployment, isLoading } = trpc.deployment.getById.useQuery(
+    { id },
+    { refetchInterval: (query) => {
+      const status = (query.state.data as DeploymentDetail | undefined)?.status;
+      return status === "PENDING" || status === "PROVISIONING" ? 3000 : false;
+    }},
+  ) as {
     data: DeploymentDetail | undefined;
     isLoading: boolean;
   };

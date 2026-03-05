@@ -12,6 +12,7 @@ import {
 } from "../llm/prompts/integration-agent";
 import { DATABASE_TOOLS } from "../tools/database-tools";
 import { DOCKER_TOOLS } from "../tools/docker-tools";
+import { BRIDGE_TOOLS } from "../tools/bridge-tools";
 
 export class IntegrationAgent extends BaseAgent {
   constructor(provider: LLMProvider, toolExecutor?: ToolExecutor) {
@@ -32,8 +33,9 @@ export class IntegrationAgent extends BaseAgent {
           ...DOCKER_TOOLS.filter((t) =>
             ["deploy_module", "list_deployments"].includes(t.name),
           ),
+          ...BRIDGE_TOOLS,
         ],
-        maxTurns: 5,
+        maxTurns: 8,
       },
       toolExecutor,
     );

@@ -64,6 +64,9 @@ model User {
   // Sandbox
   sandboxSessions SandboxSession[]
 
+  // Workspace
+  workspace Workspace?
+
   // System
   notifications Notification[]
 
@@ -612,6 +615,50 @@ model SandboxSession {
   @@index([userId, status])
   @@index([expiresAt])
   @@map("sandbox_sessions")
+}
+
+// ============================================================
+// WORKSPACE & DATA BRIDGES
+// ============================================================
+
+model Workspace {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  name             String   @default("My Workspace")
+  proxyPort        Int?
+  proxyContainerId String?
+  networkName      String?
+  status           String   @default("inactive") // inactive | starting | active | error
+  errorMessage     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user    User         @relation(fields: [userId], references: [id])
+  bridges DataBridge[]
+
+  @@map("workspaces")
+}
+
+model DataBridge {
+  id                 String    @id @default(cuid())
+  workspaceId        String
+  name               String
+  sourceDeploymentId String
+  targetDeploymentId String
+  bridgeType         String    // "polling" | "webhook" | "event_stream"
+  configuration      Json
+  containerId        String?
+  status             String    @default("inactive") // inactive | running | error | stopped
+  errorMessage       String?
+  lastSyncAt         DateTime?
+  syncCount          Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@map("data_bridges")
 }
 
 // ============================================================

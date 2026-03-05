@@ -12,6 +12,7 @@ import {
   Monitor,
   X,
   RefreshCw,
+  Timer,
 } from "lucide-react";
 
 interface SandboxViewerProps {
@@ -21,6 +22,13 @@ interface SandboxViewerProps {
 }
 
 type SandboxState = "idle" | "starting" | "running" | "expired" | "failed";
+type Duration = 1 | 5 | 15;
+
+const DURATION_OPTIONS: { value: Duration; label: string }[] = [
+  { value: 1, label: "1 min" },
+  { value: 5, label: "5 min" },
+  { value: 15, label: "15 min" },
+];
 
 export function SandboxViewer({ moduleId, moduleName, versionId }: SandboxViewerProps) {
   const [state, setState] = useState<SandboxState>("idle");
@@ -28,6 +36,7 @@ export function SandboxViewer({ moduleId, moduleName, versionId }: SandboxViewer
   const [port, setPort] = useState<number | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedDuration, setSelectedDuration] = useState<Duration>(5);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const trpcUtils = trpc.useUtils();
 
@@ -91,7 +100,6 @@ export function SandboxViewer({ moduleId, moduleName, versionId }: SandboxViewer
     }
   }, []);
 
-  // Format seconds as MM:SS
   function formatTime(seconds: number): string {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
@@ -105,6 +113,7 @@ export function SandboxViewer({ moduleId, moduleName, versionId }: SandboxViewer
       const result = await startMutation.mutateAsync({
         moduleId,
         versionId,
+        durationMinutes: selectedDuration,
       });
       setSessionId(result.sessionId);
       setPort(result.port);
@@ -128,7 +137,6 @@ export function SandboxViewer({ moduleId, moduleName, versionId }: SandboxViewer
       setState("expired");
       cleanupCountdown();
     } catch {
-      // If stop fails, still mark as expired on the UI
       setState("expired");
       cleanupCountdown();
     }
@@ -145,17 +153,41 @@ export function SandboxViewer({ moduleId, moduleName, versionId }: SandboxViewer
 
   // ======================= RENDER =======================
 
-  // Idle state — "Try Demo" button
+  // Idle state — Duration picker + "Try Demo" button
   if (state === "idle") {
     return (
-      <button
-        onClick={handleStart}
-        disabled={startMutation.isPending}
-        className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/5 text-sm font-medium text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-50"
-      >
-        <Play className="h-4 w-4" />
-        Try Demo
-      </button>
+      <div className="space-y-3">
+        {/* Duration selection */}
+        <div className="flex items-center gap-2">
+          <Timer className="h-4 w-4 text-muted-foreground" />
+          <span className="text-xs font-medium text-muted-foreground">Demo duration:</span>
+          <div className="flex gap-1">
+            {DURATION_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setSelectedDuration(opt.value)}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  selectedDuration === opt.value
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Start button */}
+        <button
+          onClick={handleStart}
+          disabled={startMutation.isPending}
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/5 text-sm font-medium text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-50"
+        >
+          <Play className="h-4 w-4" />
+          Try Demo ({selectedDuration} min)
+        </button>
+      </div>
     );
   }
 
@@ -189,7 +221,7 @@ export function SandboxViewer({ moduleId, moduleName, versionId }: SandboxViewer
   // Running state — iframe with timer
   if (state === "running" && port) {
     const sandboxUrl = `http://localhost:${port}`;
-    const isLowTime = remainingSeconds <= 120; // 2 minutes warning
+    const isLowTime = remainingSeconds <= 30;
 
     return (
       <div className="rounded-xl border bg-card">
@@ -284,7 +316,7 @@ export function SandboxViewer({ moduleId, moduleName, versionId }: SandboxViewer
             The sandbox container has been terminated. Purchase the module to deploy it permanently.
           </p>
           <button
-            onClick={handleStart}
+            onClick={handleReset}
             disabled={startMutation.isPending}
             className="mt-4 inline-flex items-center gap-2 rounded-md border px-4 py-2 text-xs font-medium hover:bg-muted"
           >
@@ -321,7 +353,7 @@ export function SandboxViewer({ moduleId, moduleName, versionId }: SandboxViewer
             </p>
           )}
           <button
-            onClick={handleStart}
+            onClick={handleReset}
             disabled={startMutation.isPending}
             className="mt-4 inline-flex items-center gap-2 rounded-md border px-4 py-2 text-xs font-medium hover:bg-muted"
           >

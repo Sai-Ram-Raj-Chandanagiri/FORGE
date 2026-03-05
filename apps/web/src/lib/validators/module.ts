@@ -74,7 +74,7 @@ export const createVersionSchema = z.object({
   sourceBranch: z.string().min(1).max(256).optional(),
   exposedPort: z.number().int().min(1).max(65535).optional(),
   healthCheckPath: z.string().regex(/^\//, "Health check path must start with /").optional(),
-  requiredEnvVars: z.array(z.string()).optional(),
+  requiredEnvVars: z.union([z.array(z.string()), z.record(z.string(), z.string())]).optional(),
   customDockerfile: z.string().max(50000).optional(),
 });
 

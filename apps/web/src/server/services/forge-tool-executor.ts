@@ -8,6 +8,7 @@ import type { PrismaClient } from "@forge/db";
 import { SearchService } from "./search.service";
 import { ModuleService } from "./module.service";
 import { DeploymentService } from "./deployment.service";
+import { WorkspaceService } from "./workspace.service";
 
 export class ForgeToolExecutor implements ToolExecutor {
   private prisma: PrismaClient;
@@ -43,6 +44,20 @@ export class ForgeToolExecutor implements ToolExecutor {
         return this.restartDeployment(args, context);
       case "stop_deployment":
         return this.stopDeployment(args, context);
+
+      // ===== Workspace / Bridge Tools =====
+      case "get_workspace_status":
+        return this.getWorkspaceStatus(context);
+      case "activate_workspace":
+        return this.activateWorkspaceAction(context);
+      case "create_data_bridge":
+        return this.createDataBridge(args, context);
+      case "list_bridges":
+        return this.listBridgesAction(context);
+      case "stop_bridge":
+        return this.stopBridgeAction(args, context);
+      case "delete_bridge":
+        return this.deleteBridgeAction(args, context);
 
       // ===== Notification Tools =====
       case "send_notification":
@@ -211,6 +226,137 @@ export class ForgeToolExecutor implements ToolExecutor {
       return { success: true, message: "Deployment stopped" };
     } catch (err) {
       return { error: err instanceof Error ? err.message : "Failed to stop" };
+    }
+  }
+
+  // ===== Workspace / Bridge Tools =====
+
+  private async getWorkspaceStatus(context: AgentContext): Promise<Record<string, unknown>> {
+    const workspaceService = new WorkspaceService(this.prisma);
+    try {
+      const status = await workspaceService.getWorkspaceStatus(context.userId);
+      return {
+        workspace: status.workspace,
+        connectedModules: status.connectedModules.map((m) => ({
+          deploymentId: m.deploymentId,
+          moduleName: m.moduleName,
+          moduleSlug: m.moduleSlug,
+          status: m.status,
+          proxyPath: m.proxyPath,
+          directUrl: m.directUrl,
+        })),
+        bridges: status.bridges.map((b) => ({
+          id: b.id,
+          name: b.name,
+          status: b.status,
+          syncCount: b.syncCount,
+          lastSyncAt: b.lastSyncAt,
+        })),
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to get workspace status" };
+    }
+  }
+
+  private async activateWorkspaceAction(context: AgentContext): Promise<Record<string, unknown>> {
+    const workspaceService = new WorkspaceService(this.prisma);
+    try {
+      const result = await workspaceService.activateWorkspace(context.userId);
+      return {
+        success: true,
+        portalUrl: result.workspace.portalUrl,
+        status: result.workspace.status,
+        connectedModules: result.connectedModules.length,
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to activate workspace" };
+    }
+  }
+
+  private async createDataBridge(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    const workspaceService = new WorkspaceService(this.prisma);
+    const name = args.name as string;
+    const sourceDeploymentId = args.sourceDeploymentId as string;
+    const targetDeploymentId = args.targetDeploymentId as string;
+    const bridgeType = (args.bridgeType as string) || "polling";
+
+    if (!name || !sourceDeploymentId || !targetDeploymentId) {
+      return { error: "name, sourceDeploymentId, and targetDeploymentId are required" };
+    }
+
+    try {
+      const bridge = await workspaceService.createBridge(context.userId, {
+        name,
+        sourceDeploymentId,
+        targetDeploymentId,
+        bridgeType: bridgeType as "polling" | "webhook" | "event_stream",
+        configuration: {
+          sourceEndpoint: (args.sourceEndpoint as string) || "/api/data",
+          targetEndpoint: (args.targetEndpoint as string) || "/api/data",
+          syncFrequencySeconds: (args.syncFrequencySeconds as number) || 30,
+        },
+      });
+      return {
+        success: true,
+        bridgeId: bridge.id,
+        name: bridge.name,
+        status: bridge.status,
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to create bridge" };
+    }
+  }
+
+  private async listBridgesAction(context: AgentContext): Promise<Record<string, unknown>> {
+    const workspaceService = new WorkspaceService(this.prisma);
+    try {
+      const bridges = await workspaceService.listBridges(context.userId);
+      return {
+        bridges: bridges.map((b) => ({
+          id: b.id,
+          name: b.name,
+          bridgeType: b.bridgeType,
+          status: b.status,
+          syncCount: b.syncCount,
+          lastSyncAt: b.lastSyncAt,
+        })),
+        count: bridges.length,
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to list bridges" };
+    }
+  }
+
+  private async stopBridgeAction(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    const workspaceService = new WorkspaceService(this.prisma);
+    const bridgeId = args.bridgeId as string;
+    if (!bridgeId) return { error: "bridgeId is required" };
+    try {
+      await workspaceService.stopBridge(context.userId, bridgeId);
+      return { success: true, message: "Bridge stopped" };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to stop bridge" };
+    }
+  }
+
+  private async deleteBridgeAction(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    const workspaceService = new WorkspaceService(this.prisma);
+    const bridgeId = args.bridgeId as string;
+    if (!bridgeId) return { error: "bridgeId is required" };
+    try {
+      await workspaceService.deleteBridge(context.userId, bridgeId);
+      return { success: true, message: "Bridge deleted" };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to delete bridge" };
     }
   }
 

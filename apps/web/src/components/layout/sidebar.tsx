@@ -13,6 +13,7 @@ import {
   Shield,
   Cpu,
   ChevronLeft,
+  Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -21,6 +22,7 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "FORGE Store", href: "/store", icon: Store },
   { name: "FORGE Link", href: "/link", icon: Link2 },
+  { name: "Workspace", href: "/workspace", icon: Boxes },
   { name: "FORGE Hub", href: "/hub", icon: Users },
   { name: "Agents", href: "/agents", icon: Bot },
 ];

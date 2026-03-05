@@ -19,9 +19,14 @@ export default function LinkPage() {
   const { data: stats } = trpc.deployment.getStats.useQuery() as {
     data: { running: number; stopped: number; total: number; failed: number } | undefined;
   };
-  const { data: deploymentsData, isLoading } = trpc.deployment.list.useQuery({
-    limit: 20,
-  }) as {
+  const { data: deploymentsData, isLoading } = trpc.deployment.list.useQuery(
+    { limit: 20 },
+    { refetchInterval: (query) => {
+      const deployments = (query.state.data as { deployments: DeploymentItem[] } | undefined)?.deployments;
+      const hasProvisioning = deployments?.some((d) => d.status === "PENDING" || d.status === "PROVISIONING");
+      return hasProvisioning ? 3000 : false;
+    }},
+  ) as {
     data: { deployments: DeploymentItem[]; total: number } | undefined;
     isLoading: boolean;
   };

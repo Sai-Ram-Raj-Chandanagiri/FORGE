@@ -219,10 +219,20 @@ export default function PublishModulePage() {
         .map((t) => t.trim())
         .filter(Boolean);
 
-      const envVarList = requiredEnvVars
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean);
+      // Parse KEY=VALUE pairs (one per line) into a JSON object
+      const envVarMap: Record<string, string> = {};
+      requiredEnvVars
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .forEach((line) => {
+          const eqIdx = line.indexOf("=");
+          if (eqIdx > 0) {
+            const key = line.slice(0, eqIdx).trim();
+            const value = line.slice(eqIdx + 1).trim();
+            envVarMap[key] = value;
+          }
+        });
 
       // 1. Create the module
       const module = await createModule.mutateAsync({
@@ -250,7 +260,7 @@ export default function PublishModulePage() {
         sourceBranch: sourceMode === "repo" ? sourceBranch : undefined,
         exposedPort: parseInt(exposedPort) || 80,
         healthCheckPath: healthCheckPath || "/",
-        requiredEnvVars: envVarList.length > 0 ? envVarList : undefined,
+        requiredEnvVars: Object.keys(envVarMap).length > 0 ? envVarMap : undefined,
       });
 
       setCreatedVersionId(versionRecord.id);
@@ -673,15 +683,17 @@ export default function PublishModulePage() {
 
               {/* Required Env Vars */}
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Required Environment Variables (comma-separated)</label>
-                <input
+                <label className="text-sm font-medium">Environment Variables (KEY=VALUE, one per line)</label>
+                <textarea
                   value={requiredEnvVars}
                   onChange={(e) => setRequiredEnvVars(e.target.value)}
-                  placeholder="e.g., DATABASE_URL, API_KEY, SECRET"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder={"DATABASE_URL=postgresql://postgres:password@localhost:5432/mydb\nSESSION_SECRET=change-me\nNODE_ENV=production"}
+                  rows={4}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Users deploying this module will be prompted to provide these values
+                  These values are injected into sandbox demos and deployments. Use KEY=VALUE format, one per line.
+                  For database URLs, use <code className="text-xs">localhost</code> — FORGE auto-maps it for containers.
                 </p>
               </div>
             </>

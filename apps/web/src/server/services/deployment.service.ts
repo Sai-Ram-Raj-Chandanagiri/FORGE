@@ -8,6 +8,7 @@ import {
   type ContainerStats,
 } from "@forge/docker-manager";
 import type { CreateDeploymentInput } from "@/lib/validators/deployment";
+import { WorkspaceService } from "./workspace.service";
 
 /** Port range allocated for FORGE-managed containers */
 const PORT_RANGE_START = 3001;
@@ -133,6 +134,7 @@ export class DeploymentService {
 
       // 4. Build container config with dynamic port mapping
       const containerName = `forge-${name}-${deploymentId.slice(0, 8)}`;
+
       const containerConfig: ContainerConfig = {
         name: containerName,
         image: dockerImage,
@@ -155,10 +157,10 @@ export class DeploymentService {
       const containerId = await this.containerManager.createContainer(containerConfig);
       await this.log(deploymentId, "info", `Container created: ${containerName}`);
 
-      // 6. Store container ID in DB
+      // 6. Store container name in DB (Docker DNS resolves by name on networks)
       await this.prisma.deployment.update({
         where: { id: deploymentId },
-        data: { containerName: containerId },
+        data: { containerName },
       });
 
       // 7. Start the container
@@ -191,6 +193,16 @@ export class DeploymentService {
           },
         });
         await this.log(deploymentId, "warn", `Container is running but health check pending: ${healthResult.error || "non-2xx response"}`);
+      }
+
+      // 9. Connect to workspace network if workspace is active
+      try {
+        const workspaceService = new WorkspaceService(this.prisma);
+        await workspaceService.connectDeployment(userId, deploymentId);
+        await this.log(deploymentId, "info", "Connected to workspace network");
+      } catch (wsErr) {
+        // Workspace may not exist or not be active — that's fine
+        console.error(`[DeploymentService] Workspace connect error:`, wsErr);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown provisioning error";
@@ -331,6 +343,14 @@ export class DeploymentService {
     const deployment = await this.getDeploymentForAction(userId, deploymentId);
 
     try {
+      // Disconnect from workspace network first
+      try {
+        const workspaceService = new WorkspaceService(this.prisma);
+        await workspaceService.disconnectDeployment(userId, deploymentId);
+      } catch {
+        // Workspace may not exist or container not connected
+      }
+
       if (deployment.containerName) {
         try {
           await this.containerManager.stopContainer(deployment.containerName);

@@ -72,8 +72,8 @@ class RateLimiter {
 // Singleton instances – different limits per endpoint category
 // ---------------------------------------------------------------------------
 
-/** Auth endpoints: 10 requests per minute per IP. */
-export const authLimiter = new RateLimiter(60_000, 10);
+/** Auth endpoints: 60 requests per minute per IP (handles dev HMR + frequent useSession polls). */
+export const authLimiter = new RateLimiter(60_000, 60);
 
 /** tRPC mutation endpoints: 30 requests per minute per IP. */
 export const mutationLimiter = new RateLimiter(60_000, 30);

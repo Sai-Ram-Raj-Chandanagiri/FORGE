@@ -4,6 +4,7 @@ import { z } from "zod";
 export const startSandboxSchema = z.object({
   moduleId: z.string().min(1, "Module ID is required"),
   versionId: z.string().min(1, "Version ID is required").optional(),
+  durationMinutes: z.union([z.literal(1), z.literal(5), z.literal(15)]).optional(),
 });
 export type StartSandboxInput = z.infer<typeof startSandboxSchema>;
 

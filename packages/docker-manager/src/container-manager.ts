@@ -20,6 +20,8 @@ export interface ContainerConfig {
   };
   restartPolicy?: "no" | "always" | "unless-stopped" | "on-failure";
   labels?: Record<string, string>;
+  extraHosts?: string[]; // e.g. ["host.docker.internal:host-gateway"]
+  cmd?: string[]; // Command/args to pass to the container entrypoint
 }
 
 export interface ContainerInfo {
@@ -88,6 +90,7 @@ export class ContainerManager {
     const container = await this.docker.createContainer({
       name: config.name,
       Image: config.image,
+      Cmd: config.cmd,
       Env: envArray,
       ExposedPorts: exposedPorts,
       Labels: {
@@ -98,6 +101,7 @@ export class ContainerManager {
         PortBindings: portBindings,
         Binds: binds,
         NetworkMode: config.network,
+        ExtraHosts: config.extraHosts,
         RestartPolicy: config.restartPolicy
           ? { Name: config.restartPolicy, MaximumRetryCount: config.restartPolicy === "on-failure" ? 3 : 0 }
           : undefined,

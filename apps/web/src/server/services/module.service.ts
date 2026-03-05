@@ -63,14 +63,12 @@ export class ModuleService {
   constructor(private prisma: PrismaClient) {}
 
   async create(authorId: string, input: CreateModuleInput) {
-    const slug = slugify(input.name);
-
+    // Generate a unique slug — append a random 6-char suffix if the base slug already exists
+    let slug = slugify(input.name);
     const existing = await this.prisma.module.findUnique({ where: { slug } });
     if (existing) {
-      throw new TRPCError({
-        code: "CONFLICT",
-        message: "A module with a similar name already exists",
-      });
+      const suffix = Math.random().toString(36).slice(2, 8);
+      slug = `${slug}-${suffix}`;
     }
 
     // Ensure tags exist or create them

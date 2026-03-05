@@ -16,7 +16,7 @@ export const sandboxRouter = router({
     .input(startSandboxSchema)
     .mutation(async ({ ctx, input }) => {
       const service = new SandboxService(ctx.prisma);
-      return service.startDemo(ctx.user.id, input.moduleId, input.versionId);
+      return service.startDemo(ctx.user.id, input.moduleId, input.versionId, input.durationMinutes);
     }),
 
   /**

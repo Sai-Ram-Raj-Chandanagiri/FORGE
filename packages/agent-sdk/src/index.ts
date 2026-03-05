@@ -52,6 +52,7 @@ export { A2AClient } from "./protocol/a2a-client";
 export { DOCKER_TOOLS } from "./tools/docker-tools";
 export { DATABASE_TOOLS } from "./tools/database-tools";
 export { NOTIFICATION_TOOLS } from "./tools/notification-tools";
+export { BRIDGE_TOOLS } from "./tools/bridge-tools";
 
 // Prompts
 export {

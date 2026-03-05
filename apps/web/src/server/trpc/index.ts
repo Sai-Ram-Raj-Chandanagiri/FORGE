@@ -11,6 +11,7 @@ import { organizationRouter } from "./routers/organization";
 import { billingRouter } from "./routers/billing";
 import { adminRouter } from "./routers/admin";
 import { sandboxRouter } from "./routers/sandbox";
+import { workspaceRouter } from "./routers/workspace";
 
 export const appRouter = router({
   auth: authRouter,
@@ -25,6 +26,7 @@ export const appRouter = router({
   billing: billingRouter,
   admin: adminRouter,
   sandbox: sandboxRouter,
+  workspace: workspaceRouter,
 });
 
 export type AppRouter = typeof appRouter;
