@@ -6,10 +6,10 @@ import {
   NetworkManager,
   type ContainerConfig,
 } from "@forge/docker-manager";
+import { findAvailablePortInRange } from "./port-allocator";
+import { logger } from "@/lib/logger";
 
-/** Sandbox port range — separate from deployment range (3001-4000) */
-const SANDBOX_PORT_START = 4001;
-const SANDBOX_PORT_END = 5000;
+const log = logger.forService("SandboxService");
 
 /** Resource limits for sandbox containers — lighter than real deployments */
 const SANDBOX_CPU_LIMIT = 0.25;
@@ -151,7 +151,7 @@ export class SandboxService {
       version.healthCheckPath || "/",
       envVars,
     ).catch((err) => {
-      console.error(`[SandboxService] Provision error for session ${session.id}:`, err);
+      log.error(` Provision error for session ${session.id}:`, err);
     });
 
     return {
@@ -226,7 +226,7 @@ export class SandboxService {
       });
 
       if (!healthResult.healthy) {
-        console.warn(`[SandboxService] Sandbox ${sessionId} is running but health check did not pass: ${healthResult.error}`);
+        log.warn(` Sandbox ${sessionId} is running but health check did not pass: ${healthResult.error}`);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to start sandbox container";
@@ -388,12 +388,12 @@ export class SandboxService {
         await this.cleanupSession(session.id, session.containerId, session.networkId);
         cleaned++;
       } catch (err) {
-        console.error(`[SandboxService] Failed to cleanup session ${session.id}:`, err);
+        log.error(` Failed to cleanup session ${session.id}:`, err);
       }
     }
 
     if (cleaned > 0) {
-      console.log(`[SandboxService] Cleaned up ${cleaned} expired sandbox session(s)`);
+      log.info(` Cleaned up ${cleaned} expired sandbox session(s)`);
     }
 
     // Phase 2: Delete old expired/failed records from DB (5-minute grace period for UI)
@@ -406,10 +406,10 @@ export class SandboxService {
         },
       });
       if (deleted.count > 0) {
-        console.log(`[SandboxService] Purged ${deleted.count} old session record(s) from DB`);
+        log.info(` Purged ${deleted.count} old session record(s) from DB`);
       }
     } catch (err) {
-      console.error("[SandboxService] Failed to purge old records:", err);
+      log.error("Failed to purge old records:", err);
     }
 
     return cleaned;
@@ -424,7 +424,7 @@ export class SandboxService {
       try {
         await this.cleanupExpired();
       } catch (err) {
-        console.error("[SandboxService] Cleanup interval error:", err);
+        log.error("Cleanup interval error:", err);
       }
     }, CLEANUP_INTERVAL_MS);
   }
@@ -483,13 +483,6 @@ export class SandboxService {
     for (const s of usedSandboxPorts) { if (s.port) usedSet.add(s.port); }
     for (const d of usedDeployPorts) { if (d.assignedPort) usedSet.add(d.assignedPort); }
 
-    for (let port = SANDBOX_PORT_START; port <= SANDBOX_PORT_END; port++) {
-      if (!usedSet.has(port)) return port;
-    }
-
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "No available sandbox ports. Please try again later.",
-    });
+    return findAvailablePortInRange("sandbox", usedSet);
   }
 }

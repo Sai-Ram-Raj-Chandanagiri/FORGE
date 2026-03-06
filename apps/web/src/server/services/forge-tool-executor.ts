@@ -69,6 +69,14 @@ export class ForgeToolExecutor implements ToolExecutor {
       case "send_notification":
         return this.sendNotification(args, context);
 
+      // ===== Layout Tools =====
+      case "generate_platform_layout":
+        return this.generatePlatformLayout(args, context);
+      case "get_platform_layout":
+        return this.getPlatformLayout(context);
+      case "update_platform_layout":
+        return this.updatePlatformLayout(args, context);
+
       default:
         return { error: `Unknown tool: ${toolName}`, success: false };
     }
@@ -569,6 +577,166 @@ export class ForgeToolExecutor implements ToolExecutor {
       };
     } catch (err) {
       return { error: err instanceof Error ? err.message : "Failed to scale deployment" };
+    }
+  }
+
+  // ===== Layout Tools =====
+
+  private async generatePlatformLayout(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    const platformName = (args.platformName as string) || "My Platform";
+    const primaryColor = (args.primaryColor as string) || "#6366f1";
+    const homepage = (args.homepage as string) || "dashboard";
+    const sidebarItems = (args.sidebarItems as { moduleSlug: string; label: string; icon: string; group: string; order: number }[]) || [];
+
+    try {
+      // Get or create workspace
+      const workspace = await this.prisma.workspace.findUnique({
+        where: { userId: context.userId },
+      });
+
+      if (!workspace) {
+        return { error: "No workspace found. Activate workspace first." };
+      }
+
+      // Build the layout config
+      const groups = Array.from(new Set(sidebarItems.map((item) => item.group)))
+        .map((name, idx) => ({ name, order: idx + 1 }));
+
+      const layoutConfig = {
+        theme: {
+          brandName: platformName,
+          primaryColor,
+          logoUrl: null,
+        },
+        homepage,
+        sidebar: sidebarItems.map((item, idx) => ({
+          moduleSlug: item.moduleSlug,
+          label: item.label || item.moduleSlug,
+          icon: item.icon || "box",
+          group: item.group || "Modules",
+          order: item.order ?? idx + 1,
+        })),
+        groups,
+      };
+
+      // Upsert the PlatformLayout record
+      await this.prisma.platformLayout.upsert({
+        where: { workspaceId: workspace.id },
+        create: {
+          workspaceId: workspace.id,
+          name: platformName,
+          layout: layoutConfig as import("@forge/db").Prisma.InputJsonValue,
+        },
+        update: {
+          name: platformName,
+          layout: layoutConfig as import("@forge/db").Prisma.InputJsonValue,
+        },
+      });
+
+      // Regenerate Nginx config if workspace is active
+      if (workspace.status === "active") {
+        const workspaceService = new WorkspaceService(this.prisma);
+        try {
+          await workspaceService.regenerateProxy(context.userId);
+        } catch {
+          // Non-fatal — layout saved, proxy will update on next activation
+        }
+      }
+
+      return {
+        success: true,
+        platformName,
+        portalUrl: workspace.proxyPort ? `http://localhost:${workspace.proxyPort}` : null,
+        sidebar: layoutConfig.sidebar,
+        groups: layoutConfig.groups,
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to generate layout" };
+    }
+  }
+
+  private async getPlatformLayout(
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    try {
+      const workspace = await this.prisma.workspace.findUnique({
+        where: { userId: context.userId },
+        include: { layout: true },
+      });
+
+      if (!workspace) return { error: "No workspace found" };
+      if (!workspace.layout) return { hasLayout: false, message: "No platform layout configured" };
+
+      return {
+        hasLayout: true,
+        name: workspace.layout.name,
+        layout: workspace.layout.layout,
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to get layout" };
+    }
+  }
+
+  private async updatePlatformLayout(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    const changes = args.changes as Record<string, unknown> | undefined;
+    if (!changes) return { error: "changes object is required" };
+
+    try {
+      const workspace = await this.prisma.workspace.findUnique({
+        where: { userId: context.userId },
+        include: { layout: true },
+      });
+
+      if (!workspace) return { error: "No workspace found" };
+      if (!workspace.layout) return { error: "No platform layout exists. Use generate_platform_layout first." };
+
+      const currentLayout = workspace.layout.layout as Record<string, unknown>;
+
+      // Merge changes into current layout
+      const updatedLayout = { ...currentLayout };
+
+      if (changes.theme) {
+        updatedLayout.theme = { ...(currentLayout.theme as Record<string, unknown> || {}), ...(changes.theme as Record<string, unknown>) };
+      }
+      if (changes.homepage !== undefined) {
+        updatedLayout.homepage = changes.homepage;
+      }
+      if (changes.sidebar) {
+        updatedLayout.sidebar = changes.sidebar;
+      }
+      if (changes.groups) {
+        updatedLayout.groups = changes.groups;
+      }
+
+      const newName = (changes.theme as Record<string, unknown>)?.brandName as string | undefined;
+
+      await this.prisma.platformLayout.update({
+        where: { workspaceId: workspace.id },
+        data: {
+          layout: updatedLayout as import("@forge/db").Prisma.InputJsonValue,
+          ...(newName ? { name: newName } : {}),
+        },
+      });
+
+      // Regenerate Nginx config if workspace is active
+      if (workspace.status === "active") {
+        const workspaceService = new WorkspaceService(this.prisma);
+        try {
+          await workspaceService.regenerateProxy(context.userId);
+        } catch {
+          // Non-fatal
+        }
+      }
+
+      return { success: true, layout: updatedLayout };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to update layout" };
     }
   }
 }

@@ -633,10 +633,24 @@ model Workspace {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  user    User         @relation(fields: [userId], references: [id])
+  user    User              @relation(fields: [userId], references: [id])
   bridges DataBridge[]
+  layout  PlatformLayout?
 
   @@map("workspaces")
+}
+
+model PlatformLayout {
+  id          String   @id @default(cuid())
+  workspaceId String   @unique
+  name        String   @default("My Platform")
+  layout      Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("platform_layouts")
 }
 
 model DataBridge {

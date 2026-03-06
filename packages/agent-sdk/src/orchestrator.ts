@@ -13,6 +13,7 @@ import { SetupAgent } from "./agents/setup-agent";
 import { WorkflowAgent } from "./agents/workflow-agent";
 import { MonitorAgent } from "./agents/monitor-agent";
 import { IntegrationAgent } from "./agents/integration-agent";
+import { ComposerAgent } from "./agents/composer-agent";
 import { A2AClient } from "./protocol/a2a-client";
 import type { LLMMessage } from "./llm/provider";
 
@@ -50,6 +51,10 @@ export class AgentOrchestrator {
     this.agents.set(
       "integration",
       new IntegrationAgent(this.provider, this.toolExecutor),
+    );
+    this.agents.set(
+      "composer",
+      new ComposerAgent(this.provider, this.toolExecutor),
     );
   }
 

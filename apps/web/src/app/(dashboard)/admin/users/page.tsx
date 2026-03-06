@@ -13,16 +13,8 @@ import {
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { trpc } from "@/lib/trpc-client";
-
-interface UserItem {
-  id: string;
-  name: string | null;
-  email: string;
-  username: string;
-  role: string;
-  status: string;
-  createdAt: string;
-}
+import type { UserItem } from "@/types/admin";
+import { isAdmin } from "@/lib/role-utils";
 
 export default function AdminUsersPage() {
   const [page, setPage] = useState(1);
@@ -181,7 +173,7 @@ export default function AdminUsersPage() {
                 <span
                   className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${getRoleBadgeClasses(user.role)}`}
                 >
-                  {user.role === "admin" && (
+                  {isAdmin(user.role) && (
                     <Shield className="h-3 w-3" />
                   )}
                   {user.role}

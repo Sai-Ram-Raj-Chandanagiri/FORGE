@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 import { Bell, Moon, Sun, LogOut, User } from "lucide-react";
 import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 
 export function Header() {
   const { data: session } = useSession();
@@ -24,7 +25,9 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex-1" />
+      <div className="flex-1">
+        <Breadcrumbs />
+      </div>
 
       <div className="flex items-center gap-2">
         {/* Theme toggle */}

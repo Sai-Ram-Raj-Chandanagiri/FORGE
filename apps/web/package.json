@@ -13,11 +13,8 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.0",
     "@forge/agent-sdk": "workspace:*",
-    "@forge/auth": "workspace:*",
     "@forge/db": "workspace:*",
     "@forge/docker-manager": "workspace:*",
-    "@forge/logger": "workspace:*",
-    "@forge/shared": "workspace:*",
     "@radix-ui/react-avatar": "^1.1.0",
     "@radix-ui/react-dialog": "^1.1.0",
     "@radix-ui/react-dropdown-menu": "^2.1.0",

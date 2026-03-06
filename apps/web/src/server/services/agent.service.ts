@@ -6,6 +6,7 @@ import {
   type LLMMessage,
   type AgentType,
 } from "@forge/agent-sdk";
+import { logger } from "@/lib/logger";
 import { ForgeToolExecutor } from "./forge-tool-executor";
 import type {
   ChatMessageInput,
@@ -20,6 +21,8 @@ export interface ConversationMessage {
   timestamp: string;
 }
 
+const log = logger.forService("AgentService");
+
 // Singleton orchestrator — lazy-initialized on first chat() call
 let orchestratorInstance: AgentOrchestrator | null = null;
 let orchestratorChecked = false;
@@ -30,8 +33,8 @@ function getOrchestrator(prisma: PrismaClient): AgentOrchestrator | null {
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    console.warn(
-      "[AgentService] GEMINI_API_KEY not set — agents will use placeholder responses. " +
+    log.warn(
+      "GEMINI_API_KEY not set — agents will use placeholder responses. " +
         "Get a free key at https://aistudio.google.com/apikey",
     );
     return null;
@@ -117,7 +120,7 @@ export class AgentService {
         agentResponse = result.response;
         toolResults = result.toolResults;
       } catch (err) {
-        console.error("[AgentService] LLM call failed, using fallback:", err);
+        log.error("LLM call failed, using fallback:", err);
         agentResponse = generateAgentResponse(agentType, message);
       }
     } else {
@@ -155,6 +158,7 @@ export class AgentService {
       conversationId: conversation.id,
       response: agentResponse,
       messages: updatedMessages,
+      toolResults,
     };
   }
 

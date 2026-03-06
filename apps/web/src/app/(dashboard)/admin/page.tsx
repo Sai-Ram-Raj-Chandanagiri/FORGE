@@ -15,31 +15,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-
-interface SystemMetrics {
-  totalUsers: number;
-  totalModules: number;
-  publishedModules: number;
-  totalDeployments: number;
-  runningDeployments: number;
-  totalOrganizations: number;
-}
-
-interface ReviewItem {
-  id: string;
-  name: string;
-  slug: string;
-  shortDescription: string;
-  createdAt: string;
-  author: { id: string; name: string | null; username: string };
-}
-
-interface ReviewQueueData {
-  modules: ReviewItem[];
-  total: number;
-  page: number;
-  totalPages: number;
-}
+import type { SystemMetrics, ReviewQueueData } from "@/types/admin";
 
 export default function AdminPage() {
   const { data: metrics } = trpc.admin.getSystemMetrics.useQuery() as {

@@ -18,56 +18,7 @@ import {
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { trpc } from "@/lib/trpc-client";
-
-interface Collaborator {
-  id: string;
-  role: string;
-  user: {
-    id: string;
-    name: string | null;
-    username: string;
-    avatarUrl: string | null;
-  };
-}
-
-interface Comment {
-  id: string;
-  body: string;
-  createdAt: string;
-  user: {
-    id: string;
-    name: string | null;
-    username: string;
-    avatarUrl: string | null;
-  };
-  parentId: string | null;
-  replies: Comment[];
-}
-
-interface ProjectData {
-  id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  repositoryUrl: string | null;
-  isPublic: boolean;
-  stars: number;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  author: {
-    id: string;
-    name: string | null;
-    username: string;
-    avatarUrl: string | null;
-    bio: string | null;
-  };
-  tags: { tag: { name: string; slug: string } }[];
-  collaborators: Collaborator[];
-  comments: Comment[];
-  _count: { comments: number; stars: number };
-  isStarred: boolean;
-}
+import type { Collaborator, Comment, ProjectData } from "@/types/hub";
 
 export default function ProjectDetailPage() {
   const { slug } = useParams<{ slug: string }>();

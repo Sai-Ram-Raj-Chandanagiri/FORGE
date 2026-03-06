@@ -11,17 +11,7 @@ import {
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { trpc } from "@/lib/trpc-client";
-
-interface ConversationItem {
-  id: string;
-  agentType: string;
-  status: string;
-  messageCount: number;
-  actionCount: number;
-  lastMessage: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+import type { ConversationItem } from "@/types/agent";
 
 const AGENT_META: Record<
   string,

@@ -1,6 +1,9 @@
 import Stripe from "stripe";
 import { TRPCError } from "@trpc/server";
 import { Prisma, type PrismaClient } from "@forge/db";
+import { logger } from "@/lib/logger";
+
+const log = logger.forService("PaymentService");
 
 // Lazy-initialized Stripe client
 let stripeClient: Stripe | null = null;
@@ -190,7 +193,7 @@ export class PaymentService {
     const pricingModel = session.metadata?.pricingModel;
 
     if (!userId || !moduleId) {
-      console.error("[PaymentService] Missing metadata in checkout session:", session.id);
+      log.error("Missing metadata in checkout session:", session.id);
       return;
     }
 

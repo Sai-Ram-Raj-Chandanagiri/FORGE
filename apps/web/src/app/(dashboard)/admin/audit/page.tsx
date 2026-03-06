@@ -9,16 +9,7 @@ import {
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { trpc } from "@/lib/trpc-client";
-
-interface AuditEntry {
-  id: string;
-  userId: string | null;
-  action: string;
-  entityType: string;
-  entityId: string;
-  ipAddress: string | null;
-  createdAt: string;
-}
+import type { AuditEntry } from "@/types/admin";
 
 export default function AdminAuditPage() {
   const [page, setPage] = useState(1);

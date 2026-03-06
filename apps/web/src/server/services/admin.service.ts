@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { Prisma, type PrismaClient } from "@forge/db";
+import { isAdmin } from "@/lib/role-utils";
 import type {
   ReviewModuleInput,
   ReviewSubmissionInput,
@@ -190,7 +191,7 @@ export class AdminService {
       });
     }
 
-    if (user.role === "ADMIN") {
+    if (isAdmin(user.role)) {
       throw new TRPCError({
         code: "FORBIDDEN",
         message: "Cannot change the status of an admin user",

@@ -10,7 +10,7 @@ import type {
   LLMResponse,
 } from "../llm/provider";
 
-export type AgentType = "setup" | "workflow" | "monitor" | "integration";
+export type AgentType = "setup" | "workflow" | "monitor" | "integration" | "composer";
 
 export interface AgentContext {
   userId: string;

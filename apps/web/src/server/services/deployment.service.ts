@@ -9,10 +9,10 @@ import {
 } from "@forge/docker-manager";
 import type { CreateDeploymentInput } from "@/lib/validators/deployment";
 import { WorkspaceService } from "./workspace.service";
+import { findAvailablePortInRange } from "./port-allocator";
+import { logger } from "@/lib/logger";
 
-/** Port range allocated for FORGE-managed containers */
-const PORT_RANGE_START = 3001;
-const PORT_RANGE_END = 4000;
+const log = logger.forService("DeploymentService");
 
 /** Default resource limits for containers */
 const DEFAULT_CPU_LIMIT = 0.5;
@@ -91,7 +91,7 @@ export class DeploymentService {
     // Provision the container asynchronously
     this.provisionContainer(deployment.id, userId, imageToUse, input.name, assignedPort, containerPort, healthPath, input.configuration, input.autoRestart)
       .catch((err) => {
-        console.error(`[DeploymentService] Provision error for ${deployment.id}:`, err);
+        log.error(` Provision error for ${deployment.id}:`, err);
       });
 
     return deployment;
@@ -202,7 +202,7 @@ export class DeploymentService {
         await this.log(deploymentId, "info", "Connected to workspace network");
       } catch (wsErr) {
         // Workspace may not exist or not be active — that's fine
-        console.error(`[DeploymentService] Workspace connect error:`, wsErr);
+        log.error(` Workspace connect error:`, wsErr);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown provisioning error";
@@ -515,16 +515,8 @@ export class DeploymentService {
       select: { assignedPort: true },
     });
 
-    const usedSet = new Set(usedPorts.map((d) => d.assignedPort));
-
-    for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
-      if (!usedSet.has(port)) return port;
-    }
-
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "No available ports in the allocation range",
-    });
+    const usedSet = new Set(usedPorts.map((d) => d.assignedPort).filter((p): p is number => p !== null));
+    return findAvailablePortInRange("deployment", usedSet);
   }
 
   private async log(deploymentId: string, level: string, message: string) {

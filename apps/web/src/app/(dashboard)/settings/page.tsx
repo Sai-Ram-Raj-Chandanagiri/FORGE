@@ -64,7 +64,7 @@ export default function SettingsPage() {
         {/* Quick links */}
         <div className="space-y-3">
           <Link
-            href="/settings/billing"
+            href="/link/billing"
             className="flex items-center justify-between rounded-xl border bg-card p-5 hover:bg-muted/50 transition-colors"
           >
             <div className="flex items-center gap-3">
@@ -79,7 +79,7 @@ export default function SettingsPage() {
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </Link>
           <Link
-            href="/settings/organizations"
+            href="/hub/organizations"
             className="flex items-center justify-between rounded-xl border bg-card p-5 hover:bg-muted/50 transition-colors"
           >
             <div className="flex items-center gap-3">

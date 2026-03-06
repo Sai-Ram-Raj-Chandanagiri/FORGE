@@ -3,7 +3,7 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  transpilePackages: ["@forge/db", "@forge/shared", "@forge/auth", "@forge/logger", "@forge/docker-manager", "@forge/agent-sdk"],
+  transpilePackages: ["@forge/db", "@forge/docker-manager", "@forge/agent-sdk"],
   serverExternalPackages: ["dockerode", "docker-modem", "ssh2"],
   webpack: (config, { isServer }) => {
     if (isServer) {
@@ -17,6 +17,13 @@ const nextConfig = {
       { protocol: "https", hostname: "lh3.googleusercontent.com" },
       { protocol: "https", hostname: "avatars.githubusercontent.com" },
     ],
+  },
+  async redirects() {
+    return [
+      { source: "/workspace", destination: "/link/workspace", permanent: true },
+      { source: "/settings/billing", destination: "/link/billing", permanent: true },
+      { source: "/settings/organizations", destination: "/hub/organizations", permanent: true },
+    ];
   },
   async headers() {
     const isProd = process.env.NODE_ENV === "production";

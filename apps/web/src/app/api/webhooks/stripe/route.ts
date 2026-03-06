@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@forge/db";
 import { PaymentService } from "@/server/services/payment.service";
+import { logger } from "@/lib/logger";
 
+const log = logger.forService("StripeWebhook");
 const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
@@ -19,7 +21,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Webhook processing failed";
-    console.error("[Stripe Webhook] Error:", message);
+    log.error("Error:", message);
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

@@ -130,19 +130,36 @@ describe("ModuleService", () => {
       });
     });
 
-    it("should throw CONFLICT if a module with the same slug already exists", async () => {
+    it("should append a random suffix to the slug when it already exists", async () => {
       const input = makeCreateInput();
+      const authorId = "user-1";
 
       // Slug already taken
       prisma.module.findUnique.mockResolvedValue(makeMockModule());
 
-      await expect(service.create("user-1", input)).rejects.toThrow(TRPCError);
-      await expect(service.create("user-1", input)).rejects.toMatchObject({
-        code: "CONFLICT",
+      // Tag upserts return tag records
+      prisma.tag.upsert
+        .mockResolvedValueOnce({ id: "tag-1", name: "docker", slug: "docker" })
+        .mockResolvedValueOnce({ id: "tag-2", name: "devops", slug: "devops" });
+
+      const expectedModule = makeMockModule({ slug: "test-module-abc123" });
+      prisma.module.create.mockResolvedValue(expectedModule);
+      prisma.submission.create.mockResolvedValue({});
+
+      const result = await service.create(authorId, input);
+
+      expect(result).toEqual(expectedModule);
+
+      // Slug check was performed with the base slug
+      expect(prisma.module.findUnique).toHaveBeenCalledWith({
+        where: { slug: "test-module" },
       });
 
-      // Should not attempt to create the module
-      expect(prisma.module.create).not.toHaveBeenCalled();
+      // Module was created with a suffixed slug (not the original)
+      expect(prisma.module.create).toHaveBeenCalledTimes(1);
+      const createCall = prisma.module.create.mock.calls[0]![0]!;
+      expect(createCall.data.slug).not.toBe("test-module");
+      expect(createCall.data.slug).toMatch(/^test-module-[a-z0-9]+$/);
     });
   });
 

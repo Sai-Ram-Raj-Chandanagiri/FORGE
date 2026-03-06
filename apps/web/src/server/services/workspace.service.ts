@@ -6,10 +6,10 @@ import {
   type ContainerConfig,
 } from "@forge/docker-manager";
 import type { CreateBridgeInput } from "@/lib/validators/workspace";
+import { findAvailablePortInRange } from "./port-allocator";
+import { logger } from "@/lib/logger";
 
-/** Port range for proxy containers (one per user workspace) */
-const PROXY_PORT_START = 8080;
-const PROXY_PORT_END = 8999;
+const log = logger.forService("WorkspaceService");
 
 /** Nginx Docker image — lightweight and battle-tested */
 const NGINX_IMAGE = "nginx:alpine";
@@ -170,7 +170,7 @@ export class WorkspaceService {
         try {
           await this.networkManager.connectContainer(networkName, dep.containerName);
         } catch (err) {
-          console.error(`[WorkspaceService] Failed to connect deployment ${dep.id}:`, err);
+          log.error(` Failed to connect deployment ${dep.id}:`, err);
         }
       }
 
@@ -322,7 +322,7 @@ export class WorkspaceService {
       // 2. Regenerate Nginx config with the new deployment included
       await this.reloadNginxConfig(userId, workspace);
     } catch (err) {
-      console.error(`[WorkspaceService] Failed to connect deployment ${deploymentId}:`, err);
+      log.error(` Failed to connect deployment ${deploymentId}:`, err);
     }
   }
 
@@ -593,8 +593,20 @@ ${locationBlocks}
 
     const containerId = await this.containerManager.createContainer(proxyConfig);
     await this.containerManager.startContainer(containerId);
-    console.log(`[WorkspaceService] Nginx proxy started on port ${proxyPort}`);
+    log.info(`Nginx proxy started on port ${proxyPort}`);
     return containerId;
+  }
+
+  /**
+   * Public method to regenerate the Nginx proxy config.
+   * Called by ForgeToolExecutor when layout changes.
+   */
+  async regenerateProxy(userId: string) {
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { userId },
+    });
+    if (!workspace || workspace.status !== "active") return;
+    await this.reloadNginxConfig(userId, workspace);
   }
 
   /**
@@ -822,16 +834,8 @@ sync();
       select: { proxyPort: true },
     });
 
-    const usedSet = new Set(usedPorts.map((w) => w.proxyPort));
-
-    for (let port = PROXY_PORT_START; port <= PROXY_PORT_END; port++) {
-      if (!usedSet.has(port)) return port;
-    }
-
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "No available proxy ports",
-    });
+    const usedSet = new Set(usedPorts.map((w) => w.proxyPort).filter((p): p is number => p !== null));
+    return findAvailablePortInRange("proxy", usedSet);
   }
 
   /**

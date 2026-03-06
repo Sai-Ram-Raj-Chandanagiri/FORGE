@@ -7,19 +7,26 @@ import {
   Workflow,
   Activity,
   Plug,
+  Layers,
   Send,
   Loader2,
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
+import { ToolResultCard } from "@/components/agents/tool-result-card";
 import { trpc } from "@/lib/trpc-client";
 
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-  timestamp: string;
-}
+import type { ChatMessage } from "@/types/agent";
 
 const AGENTS = {
+  composer: {
+    label: "Platform Composer",
+    description:
+      "I build complete platforms from FORGE modules through conversation. Tell me about your organization and what you need — I will find, deploy, connect, and deliver a unified platform.",
+    icon: Layers,
+    color: "text-rose-500",
+    bgColor: "bg-rose-500/10",
+    borderColor: "border-rose-500/20",
+  },
   setup: {
     label: "Setup Agent",
     description:
@@ -127,11 +134,12 @@ function AgentChatContent() {
         conversationId: activeConversationId ?? undefined,
       });
 
-      const result = response as { response: string; conversationId: string; messages: ChatMessage[] };
+      const result = response as { response: string; conversationId: string; messages: ChatMessage[]; toolResults?: { tool: string; success: boolean; result?: Record<string, unknown>; error?: string }[] };
       const assistantMessage: ChatMessage = {
         role: "assistant",
         content: result.response ?? "I'm sorry, I could not generate a response.",
         timestamp: new Date().toISOString(),
+        toolResults: result.toolResults,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -230,18 +238,27 @@ function AgentChatContent() {
                 >
                   <Icon className={`h-4 w-4 ${agent.color}`} />
                 </div>
-                <div
-                  className={`max-w-[75%] rounded-2xl rounded-tl-sm border bg-muted/50 px-4 py-3 ${agent.borderColor}`}
-                >
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                    {msg.content}
-                  </p>
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    {new Date(msg.timestamp).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </p>
+                <div className="max-w-[75%] space-y-2">
+                  {msg.toolResults && msg.toolResults.length > 0 && (
+                    <div className="space-y-2">
+                      {msg.toolResults.map((tr, j) => (
+                        <ToolResultCard key={j} toolResult={tr} />
+                      ))}
+                    </div>
+                  )}
+                  <div
+                    className={`rounded-2xl rounded-tl-sm border bg-muted/50 px-4 py-3 ${agent.borderColor}`}
+                  >
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                      {msg.content}
+                    </p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      {new Date(msg.timestamp).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
                 </div>
               </div>
             );
