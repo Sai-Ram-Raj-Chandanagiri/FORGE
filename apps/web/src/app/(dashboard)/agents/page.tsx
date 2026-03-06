@@ -6,6 +6,7 @@ import {
   Workflow,
   Activity,
   Plug,
+  Layers,
   MessageSquare,
   Zap,
   ArrowRight,
@@ -21,6 +22,17 @@ interface InsightsData {
 }
 
 const AGENT_CARDS = [
+  {
+    type: "composer" as const,
+    label: "Platform Composer",
+    description:
+      "Build complete platforms from FORGE modules using conversation. Search, deploy, connect, and deliver — all in one flow.",
+    icon: Layers,
+    href: "/agents/chat?agent=composer",
+    color: "text-rose-500",
+    bgColor: "bg-rose-500/10",
+    featured: true,
+  },
   {
     type: "setup" as const,
     label: "Setup Agent",

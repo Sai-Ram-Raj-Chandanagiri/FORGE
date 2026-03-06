@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const chatMessageSchema = z.object({
-  agentType: z.enum(["setup", "workflow", "monitor", "integration"]),
+  agentType: z.enum(["setup", "workflow", "monitor", "integration", "composer"]),
   message: z.string().min(1).max(5000),
   conversationId: z.string().optional(),
 });
@@ -26,7 +26,7 @@ export const toggleWorkflowSchema = z.object({
 });
 
 export const listConversationsSchema = z.object({
-  agentType: z.enum(["setup", "workflow", "monitor", "integration"]).optional(),
+  agentType: z.enum(["setup", "workflow", "monitor", "integration", "composer"]).optional(),
   limit: z.number().int().min(1).max(50).default(20),
 });
 
