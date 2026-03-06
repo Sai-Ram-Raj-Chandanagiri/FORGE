@@ -71,4 +71,15 @@ export const DATABASE_TOOLS: LLMTool[] = [
     description: "Get all modules the user has purchased/acquired.",
     parameters: {},
   },
+  {
+    name: "purchase_module",
+    description:
+      "Acquire a module from the FORGE Store. Instant for FREE modules. Returns checkout info for paid modules.",
+    parameters: {
+      moduleSlug: {
+        type: "string",
+        description: "The slug of the module to acquire",
+      },
+    },
+  },
 ];

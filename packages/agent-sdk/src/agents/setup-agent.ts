@@ -23,7 +23,7 @@ export class SetupAgent extends BaseAgent {
         greeting: SETUP_AGENT_GREETING,
         tools: [
           ...DATABASE_TOOLS.filter((t) =>
-            ["search_modules", "get_module_details"].includes(t.name),
+            ["search_modules", "get_module_details", "purchase_module"].includes(t.name),
           ),
           ...DOCKER_TOOLS.filter((t) =>
             ["deploy_module", "list_deployments"].includes(t.name),

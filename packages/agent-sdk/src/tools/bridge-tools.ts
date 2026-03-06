@@ -15,7 +15,7 @@ export const BRIDGE_TOOLS: LLMTool[] = [
   {
     name: "activate_workspace",
     description:
-      "Activate the user's workspace portal. Starts a Traefik reverse proxy that provides a single URL to access all deployed modules via path-based routing.",
+      "Activate the user's workspace portal. Starts an Nginx reverse proxy that provides a single URL to access all deployed modules via path-based routing.",
     parameters: {},
   },
   {

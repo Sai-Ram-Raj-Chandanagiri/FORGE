@@ -34,8 +34,14 @@ export class ForgeToolExecutor implements ToolExecutor {
         return this.getUserDeployments(context);
       case "get_deployment_metrics":
         return this.getDeploymentMetrics(args, context);
+      case "purchase_module":
+        return this.purchaseModule(args, context);
 
       // ===== Docker / Deployment Tools =====
+      case "deploy_module":
+        return this.deployModule(args, context);
+      case "scale_deployment":
+        return this.scaleDeployment(args, context);
       case "list_deployments":
         return this.listDeployments(args, context);
       case "get_deployment_status":
@@ -388,5 +394,181 @@ export class ForgeToolExecutor implements ToolExecutor {
     });
 
     return { success: true, notificationId: notification.id };
+  }
+
+  // ===== Deploy Module =====
+
+  private async deployModule(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    const moduleSlug = args.moduleSlug as string;
+    if (!moduleSlug) return { error: "moduleSlug is required" };
+
+    try {
+      const moduleService = new ModuleService(this.prisma);
+
+      // Look up the module by slug
+      const mod = await moduleService.getBySlug(moduleSlug);
+      if (!mod) return { error: `Module "${moduleSlug}" not found` };
+
+      // Find the target version (specific version or latest)
+      const requestedVersion = args.version as string | undefined;
+      const versions = mod.versions as unknown as {
+        id: string;
+        version: string;
+        isLatest: boolean;
+      }[];
+      let targetVersion = requestedVersion
+        ? versions.find((v) => v.version === requestedVersion)
+        : versions.find((v) => v.isLatest);
+      if (!targetVersion && versions.length > 0) {
+        targetVersion = versions[0]!;
+      }
+      if (!targetVersion) return { error: "No deployable version found" };
+
+      // Check ownership — user is author or has purchase
+      const isAuthor = mod.author?.id === context.userId;
+      if (!isAuthor) {
+        const purchases = await moduleService.getMyPurchases(context.userId);
+        const purchaseList = purchases as unknown as { module: { slug: string } }[];
+        const owned = purchaseList.some((p) => p.module.slug === moduleSlug);
+
+        if (!owned) {
+          // Auto-purchase if FREE
+          if (mod.pricingModel === "FREE") {
+            try {
+              await moduleService.purchase(context.userId, mod.id);
+            } catch (purchaseErr) {
+              // Already owned is fine
+              const msg = purchaseErr instanceof Error ? purchaseErr.message : "";
+              if (!msg.includes("already own")) {
+                return { error: `Failed to acquire module: ${msg}` };
+              }
+            }
+          } else {
+            return {
+              error: "Module not owned. Purchase it first.",
+              requiresPayment: true,
+              storeUrl: `/store/${moduleSlug}`,
+            };
+          }
+        }
+      }
+
+      // Build a deployment name from args or module slug
+      const deployName = (args.name as string) || `${moduleSlug}-deploy`;
+      const sanitizedName = deployName
+        .replace(/[^a-zA-Z0-9-_]/g, "-")
+        .substring(0, 50);
+
+      // Prepare env vars
+      const envVars = (args.envVars as Record<string, string>) || {};
+
+      const deploymentService = new DeploymentService(this.prisma);
+      const deployment = await deploymentService.create(context.userId, {
+        moduleId: mod.id,
+        versionId: targetVersion.id,
+        name: sanitizedName,
+        configuration: envVars,
+        autoRestart: true,
+      });
+
+      return {
+        success: true,
+        deploymentId: deployment.id,
+        name: deployment.name,
+        status: deployment.status,
+        port: deployment.assignedPort,
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to deploy module" };
+    }
+  }
+
+  // ===== Purchase Module =====
+
+  private async purchaseModule(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    const moduleSlug = args.moduleSlug as string;
+    if (!moduleSlug) return { error: "moduleSlug is required" };
+
+    try {
+      const moduleService = new ModuleService(this.prisma);
+      const mod = await moduleService.getBySlug(moduleSlug);
+      if (!mod) return { error: `Module "${moduleSlug}" not found` };
+
+      if (mod.pricingModel === "FREE") {
+        try {
+          await moduleService.purchase(context.userId, mod.id);
+        } catch (purchaseErr) {
+          const msg = purchaseErr instanceof Error ? purchaseErr.message : "";
+          if (msg.includes("already own")) {
+            return { success: true, owned: true, alreadyOwned: true };
+          }
+          return { error: `Failed to acquire module: ${msg}` };
+        }
+        return { success: true, owned: true };
+      }
+
+      // Paid module — agent tells user to pay manually
+      return {
+        requiresPayment: true,
+        price: mod.price?.toString() ?? "unknown",
+        pricingModel: mod.pricingModel,
+        storeUrl: `/store/${moduleSlug}`,
+        message: `This module costs ${mod.price?.toString() ?? "?"} (${mod.pricingModel}). Please purchase it from the FORGE Store.`,
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to purchase module" };
+    }
+  }
+
+  // ===== Scale Deployment =====
+
+  private async scaleDeployment(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    const deploymentId = args.deploymentId as string;
+    if (!deploymentId) return { error: "deploymentId is required" };
+
+    const cpuLimit = args.cpuLimit as number | undefined;
+    const memoryLimitMb = args.memoryLimitMb as number | undefined;
+
+    if (!cpuLimit && !memoryLimitMb) {
+      return { error: "At least one of cpuLimit or memoryLimitMb is required" };
+    }
+
+    try {
+      const deployment = await this.prisma.deployment.findFirst({
+        where: { id: deploymentId, userId: context.userId },
+        select: { id: true, configuration: true },
+      });
+
+      if (!deployment) return { error: "Deployment not found" };
+
+      const currentConfig = (deployment.configuration as Record<string, string>) || {};
+      const updatedConfig: Record<string, string> = { ...currentConfig };
+
+      if (cpuLimit !== undefined) updatedConfig["FORGE_CPU_LIMIT"] = String(cpuLimit);
+      if (memoryLimitMb !== undefined) updatedConfig["FORGE_MEMORY_LIMIT_MB"] = String(memoryLimitMb);
+
+      await this.prisma.deployment.update({
+        where: { id: deploymentId },
+        data: { configuration: updatedConfig as import("@forge/db").Prisma.InputJsonValue },
+      });
+
+      return {
+        success: true,
+        deploymentId,
+        cpuLimit: cpuLimit ?? currentConfig["FORGE_CPU_LIMIT"] ?? "unchanged",
+        memoryLimitMb: memoryLimitMb ?? currentConfig["FORGE_MEMORY_LIMIT_MB"] ?? "unchanged",
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to scale deployment" };
+    }
   }
 }
