@@ -7,6 +7,7 @@ import {
 } from "@forge/docker-manager";
 import type { CreateBridgeInput } from "@/lib/validators/workspace";
 import { findAvailablePortInRange } from "./port-allocator";
+import { generateDashboardShell, type PlatformLayoutConfig } from "./workspace-dashboard";
 import { logger } from "@/lib/logger";
 
 const log = logger.forService("WorkspaceService");
@@ -174,8 +175,18 @@ export class WorkspaceService {
         }
       }
 
-      // 5. Generate Nginx config and deploy proxy
-      const nginxConf = this.generateNginxConfig(deployments);
+      // 5. Fetch layout and bridges for dashboard shell
+      const platformLayout = await this.prisma.platformLayout.findUnique({
+        where: { workspaceId: workspace.id },
+      });
+      const layoutConfig = platformLayout?.layout as PlatformLayoutConfig | null;
+
+      const bridgeRecords = await this.prisma.dataBridge.findMany({
+        where: { workspaceId: workspace.id },
+        select: { name: true, status: true, syncCount: true, lastSyncAt: true, sourceDeploymentId: true, targetDeploymentId: true },
+      });
+
+      const nginxConf = this.generateNginxConfig(deployments, layoutConfig, bridgeRecords);
       const proxyContainerId = await this.deployNginxProxy(
         userId,
         workspace.id,
@@ -498,13 +509,15 @@ export class WorkspaceService {
       module: { slug: string };
       version: { exposedPort: number | null };
     }[],
+    layout?: PlatformLayoutConfig | null,
+    bridges?: { name: string; status: string; syncCount: number; lastSyncAt: Date | null; sourceDeploymentId: string; targetDeploymentId: string }[],
   ): string {
-    const locationBlocks = deployments
-      .filter((d) => d.containerName)
+    const activeDeployments = deployments.filter((d) => d.containerName);
+
+    const locationBlocks = activeDeployments
       .map((d) => {
         const slug = d.module.slug;
         const port = d.version.exposedPort || 80;
-        // Container name is used as hostname on the Docker network
         return `
         location /apps/${slug}/ {
             proxy_pass http://${d.containerName}:${port}/;
@@ -520,14 +533,21 @@ export class WorkspaceService {
       })
       .join("\n");
 
-    // Build a module index page listing all connected apps
-    const moduleLinks = deployments
-      .filter((d) => d.containerName)
-      .map((d) => `<li><a href="/apps/${d.module.slug}/">${d.module.slug}</a></li>`)
-      .join("");
+    // Build platform JSON for /api/platform endpoint
+    const platformJson = this.buildPlatformJson(activeDeployments, layout, bridges);
+    const escapedPlatformJson = JSON.stringify(platformJson).replace(/'/g, "\\u0027");
 
-    const indexHtml = `<!DOCTYPE html><html><head><title>FORGE Workspace Portal</title><style>body{font-family:system-ui,sans-serif;max-width:600px;margin:60px auto;padding:0 20px}h1{color:#333}a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}li{margin:8px 0;font-size:1.1em}</style></head><body><h1>FORGE Workspace Portal</h1><p>Connected modules:</p><ul>${moduleLinks || "<li>No modules connected</li>"}</ul></body></html>`;
-    // Escape single quotes for shell
+    // Build dashboard shell HTML or fallback
+    let indexHtml: string;
+    if (layout) {
+      indexHtml = generateDashboardShell(layout);
+    } else {
+      // Fallback: simple link list
+      const moduleLinks = activeDeployments
+        .map((d) => `<li><a href="/apps/${d.module.slug}/">${d.module.slug}</a></li>`)
+        .join("");
+      indexHtml = `<!DOCTYPE html><html><head><title>FORGE Workspace Portal</title><style>body{font-family:system-ui,sans-serif;max-width:600px;margin:60px auto;padding:0 20px}h1{color:#333}a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}li{margin:8px 0;font-size:1.1em}</style></head><body><h1>FORGE Workspace Portal</h1><p>Connected modules:</p><ul>${moduleLinks || "<li>No modules connected</li>"}</ul></body></html>`;
+    }
     const escapedHtml = indexHtml.replace(/'/g, "'\\''");
 
     return `worker_processes auto;
@@ -544,7 +564,15 @@ http {
         listen 80;
         server_name _;
 
-        # Portal index page
+        # Platform JSON API
+        location = /api/platform {
+            default_type application/json;
+            add_header Cache-Control "no-cache";
+            add_header Access-Control-Allow-Origin "*";
+            return 200 '${escapedPlatformJson}';
+        }
+
+        # Portal index page (dashboard shell or fallback)
         location = / {
             default_type text/html;
             return 200 '${escapedHtml}';
@@ -557,6 +585,42 @@ ${locationBlocks}
         }
     }
 }`;
+  }
+
+  private buildPlatformJson(
+    deployments: { containerName: string | null; module: { slug: string }; version: { exposedPort: number | null } }[],
+    layout?: PlatformLayoutConfig | null,
+    bridges?: { name: string; status: string; syncCount: number; lastSyncAt: Date | null; sourceDeploymentId: string; targetDeploymentId: string }[],
+  ): Record<string, unknown> {
+    const sidebarMap = new Map<string, { label: string; icon: string; group: string }>();
+    if (layout) {
+      for (const item of layout.sidebar) {
+        sidebarMap.set(item.moduleSlug, { label: item.label, icon: item.icon, group: item.group });
+      }
+    }
+
+    return {
+      name: layout?.theme.brandName || "FORGE Workspace",
+      theme: layout?.theme || { primaryColor: "#6366f1", brandName: "FORGE Workspace" },
+      modules: deployments.map((d) => {
+        const info = sidebarMap.get(d.module.slug);
+        return {
+          slug: d.module.slug,
+          label: info?.label || d.module.slug,
+          icon: info?.icon || "box",
+          group: info?.group || "Modules",
+          status: d.containerName ? "RUNNING" : "STOPPED",
+          proxyPath: `/apps/${d.module.slug}/`,
+        };
+      }),
+      bridges: (bridges || []).map((b) => ({
+        name: b.name,
+        status: b.status,
+        syncCount: b.syncCount,
+        lastSync: b.lastSyncAt?.toISOString() || null,
+      })),
+      groups: layout?.groups || [{ name: "Modules", order: 1 }],
+    };
   }
 
   /**
@@ -632,7 +696,18 @@ ${locationBlocks}
       },
     });
 
-    const nginxConf = this.generateNginxConfig(deployments);
+    // Fetch layout and bridges for dashboard shell
+    const platformLayout = await this.prisma.platformLayout.findUnique({
+      where: { workspaceId: workspace.id },
+    });
+    const layoutConfig = platformLayout?.layout as PlatformLayoutConfig | null;
+
+    const bridgeRecords = await this.prisma.dataBridge.findMany({
+      where: { workspaceId: workspace.id },
+      select: { name: true, status: true, syncCount: true, lastSyncAt: true, sourceDeploymentId: true, targetDeploymentId: true },
+    });
+
+    const nginxConf = this.generateNginxConfig(deployments, layoutConfig, bridgeRecords);
 
     // Remove old proxy container
     if (workspace.proxyContainerId) {
