@@ -14,6 +14,7 @@ import { sandboxRouter } from "./routers/sandbox";
 import { workspaceRouter } from "./routers/workspace";
 import { platformRouter } from "./routers/platform";
 import { exportRouter } from "./routers/export";
+import { blueprintRouter } from "./routers/blueprint";
 
 export const appRouter = router({
   auth: authRouter,
@@ -31,6 +32,7 @@ export const appRouter = router({
   workspace: workspaceRouter,
   platform: platformRouter,
   export: exportRouter,
+  blueprint: blueprintRouter,
 });
 
 export type AppRouter = typeof appRouter;

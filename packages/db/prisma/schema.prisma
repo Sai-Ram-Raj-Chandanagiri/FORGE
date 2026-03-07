@@ -70,6 +70,9 @@ model User {
   // System
   notifications Notification[]
 
+  // Blueprints
+  blueprints Blueprint[]
+
   @@map("users")
 }
 
@@ -651,6 +654,37 @@ model PlatformLayout {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@map("platform_layouts")
+}
+
+model Blueprint {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  authorId    String
+
+  // Composition recipe
+  modules     Json     // [{ moduleSlug, version, config, label, icon, group, priority }]
+  bridges     Json?    // [{ sourceSlug, targetSlug, type, sourceEndpoint, targetEndpoint }]
+  layout      Json?    // PlatformLayoutConfig snapshot
+
+  // Discovery
+  orgType     String?  // "ngo" | "startup" | "small_business" | "education" | "healthcare"
+  tags        String[] @default([])
+  isPublic    Boolean  @default(false)
+
+  // Stats
+  usageCount  Int      @default(0)
+  status      String   @default("draft") // draft | published | archived
+  version     String   @default("1.0.0")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([orgType, isPublic])
+  @@index([status, isPublic])
+  @@map("blueprints")
 }
 
 model DataBridge {

@@ -84,6 +84,14 @@ export class ForgeToolExecutor implements ToolExecutor {
       case "get_module_sources":
         return this.getModuleSources(context);
 
+      // ===== Blueprint Tools =====
+      case "save_blueprint":
+        return this.saveBlueprint(args, context);
+      case "search_blueprints":
+        return this.searchBlueprints(args);
+      case "deploy_blueprint":
+        return this.deployBlueprint(args, context);
+
       default:
         return { error: `Unknown tool: ${toolName}`, success: false };
     }
@@ -777,6 +785,189 @@ export class ForgeToolExecutor implements ToolExecutor {
       };
     } catch (err) {
       return { error: err instanceof Error ? err.message : "Failed to get module sources" };
+    }
+  }
+
+  // ===== Blueprint Tools =====
+
+  private async saveBlueprint(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    try {
+      const name = args.name as string;
+      if (!name) return { error: "Blueprint name is required" };
+
+      const workspace = await this.prisma.workspace.findUnique({
+        where: { userId: context.userId },
+        include: { layout: true, bridges: true },
+      });
+      if (!workspace) return { error: "No workspace found" };
+
+      const deployments = await this.prisma.deployment.findMany({
+        where: { userId: context.userId, status: "RUNNING" },
+        include: {
+          module: { select: { slug: true, name: true } },
+          version: { select: { version: true, dockerImage: true, exposedPort: true, healthCheckPath: true } },
+        },
+      });
+
+      if (deployments.length === 0) return { error: "No running deployments to save" };
+
+      const slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+
+      const existing = await this.prisma.blueprint.findUnique({ where: { slug } });
+      const finalSlug = existing ? `${slug}-${Date.now().toString(36)}` : slug;
+
+      const modulesData = deployments.map((d) => ({
+        moduleSlug: d.module.slug,
+        moduleName: d.module.name,
+        version: d.version.version,
+        dockerImage: d.version.dockerImage,
+        exposedPort: d.version.exposedPort,
+        healthCheckPath: d.version.healthCheckPath,
+      }));
+
+      const bridgesData = workspace.bridges.map((b) => ({
+        sourceDeploymentId: b.sourceDeploymentId,
+        targetDeploymentId: b.targetDeploymentId,
+        name: b.name,
+        bridgeType: b.bridgeType,
+        config: b.configuration,
+      }));
+
+      const blueprint = await this.prisma.blueprint.create({
+        data: {
+          name,
+          slug: finalSlug,
+          description: (args.description as string) || null,
+          authorId: context.userId,
+          modules: modulesData as unknown as import("@forge/db").Prisma.InputJsonValue,
+          bridges: bridgesData as unknown as import("@forge/db").Prisma.InputJsonValue,
+          layout: workspace.layout?.layout
+            ? (workspace.layout.layout as import("@forge/db").Prisma.InputJsonValue)
+            : undefined,
+          orgType: (args.orgType as string) || null,
+          tags: Array.isArray(args.tags)
+            ? (args.tags as string[]).map((t) => t.toLowerCase())
+            : [],
+        },
+      });
+
+      return {
+        success: true,
+        blueprint: {
+          name: blueprint.name,
+          slug: blueprint.slug,
+          moduleCount: modulesData.length,
+          bridgeCount: bridgesData.length,
+        },
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to save blueprint" };
+    }
+  }
+
+  private async searchBlueprints(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    try {
+      const query = args.query as string | undefined;
+      const orgType = args.orgType as string | undefined;
+
+      const where: Record<string, unknown> = {
+        isPublic: true,
+        status: "published",
+      };
+
+      if (orgType) {
+        where.orgType = orgType;
+      }
+
+      if (query) {
+        where.OR = [
+          { name: { contains: query, mode: "insensitive" } },
+          { description: { contains: query, mode: "insensitive" } },
+          { tags: { has: query.toLowerCase() } },
+        ];
+      }
+
+      const blueprints = await this.prisma.blueprint.findMany({
+        where,
+        orderBy: { usageCount: "desc" },
+        take: 10,
+        select: {
+          name: true,
+          slug: true,
+          description: true,
+          orgType: true,
+          tags: true,
+          usageCount: true,
+          modules: true,
+          version: true,
+          author: { select: { name: true, username: true } },
+        },
+      });
+
+      return {
+        success: true,
+        blueprints: blueprints.map((bp) => ({
+          name: bp.name,
+          slug: bp.slug,
+          description: bp.description,
+          orgType: bp.orgType,
+          tags: bp.tags,
+          usageCount: bp.usageCount,
+          moduleCount: Array.isArray(bp.modules) ? bp.modules.length : 0,
+          version: bp.version,
+          author: bp.author.name || bp.author.username,
+        })),
+        count: blueprints.length,
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to search blueprints" };
+    }
+  }
+
+  private async deployBlueprint(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    try {
+      const blueprintSlug = args.blueprintSlug as string;
+      if (!blueprintSlug) return { error: "Blueprint slug is required" };
+
+      const blueprint = await this.prisma.blueprint.findUnique({
+        where: { slug: blueprintSlug },
+      });
+      if (!blueprint) return { error: `Blueprint "${blueprintSlug}" not found` };
+
+      const modules = blueprint.modules as { moduleSlug: string; moduleName: string }[];
+      if (!Array.isArray(modules) || modules.length === 0) {
+        return { error: "Blueprint has no modules" };
+      }
+
+      // Increment usage count
+      await this.prisma.blueprint.update({
+        where: { slug: blueprintSlug },
+        data: { usageCount: { increment: 1 } },
+      });
+
+      return {
+        success: true,
+        blueprint: {
+          name: blueprint.name,
+          slug: blueprint.slug,
+          description: blueprint.description,
+        },
+        modules: modules.map((m) => m.moduleSlug),
+        hasBridges: !!blueprint.bridges,
+        hasLayout: !!blueprint.layout,
+        instructions: `Deploy each module: ${modules.map((m) => m.moduleSlug).join(", ")}. Then set up bridges and apply the layout. Use deploy_module for each, then create_bridge and generate_platform_layout.`,
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to deploy blueprint" };
     }
   }
 }
