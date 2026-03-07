@@ -16,6 +16,7 @@ import { DOCKER_TOOLS } from "../tools/docker-tools";
 import { BRIDGE_TOOLS } from "../tools/bridge-tools";
 import { LAYOUT_TOOLS } from "../tools/layout-tools";
 import { NOTIFICATION_TOOLS } from "../tools/notification-tools";
+import { EXPORT_TOOLS } from "../tools/export-tools";
 
 export class ComposerAgent extends BaseAgent {
   constructor(provider: LLMProvider, toolExecutor?: ToolExecutor) {
@@ -31,6 +32,7 @@ export class ComposerAgent extends BaseAgent {
           ...BRIDGE_TOOLS,
           ...LAYOUT_TOOLS,
           ...NOTIFICATION_TOOLS,
+          ...EXPORT_TOOLS,
         ],
         maxTurns: 15,
       },

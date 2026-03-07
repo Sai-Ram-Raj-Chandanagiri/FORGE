@@ -13,6 +13,7 @@ import { adminRouter } from "./routers/admin";
 import { sandboxRouter } from "./routers/sandbox";
 import { workspaceRouter } from "./routers/workspace";
 import { platformRouter } from "./routers/platform";
+import { exportRouter } from "./routers/export";
 
 export const appRouter = router({
   auth: authRouter,
@@ -29,6 +30,7 @@ export const appRouter = router({
   sandbox: sandboxRouter,
   workspace: workspaceRouter,
   platform: platformRouter,
+  export: exportRouter,
 });
 
 export type AppRouter = typeof appRouter;

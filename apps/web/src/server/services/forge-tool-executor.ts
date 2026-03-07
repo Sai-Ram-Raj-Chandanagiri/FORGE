@@ -9,6 +9,7 @@ import { SearchService } from "./search.service";
 import { ModuleService } from "./module.service";
 import { DeploymentService } from "./deployment.service";
 import { WorkspaceService } from "./workspace.service";
+import { ProjectExportService } from "./project-export.service";
 
 export class ForgeToolExecutor implements ToolExecutor {
   private prisma: PrismaClient;
@@ -76,6 +77,12 @@ export class ForgeToolExecutor implements ToolExecutor {
         return this.getPlatformLayout(context);
       case "update_platform_layout":
         return this.updatePlatformLayout(args, context);
+
+      // ===== Export Tools =====
+      case "export_project":
+        return this.exportProject(context);
+      case "get_module_sources":
+        return this.getModuleSources(context);
 
       default:
         return { error: `Unknown tool: ${toolName}`, success: false };
@@ -737,6 +744,39 @@ export class ForgeToolExecutor implements ToolExecutor {
       return { success: true, layout: updatedLayout };
     } catch (err) {
       return { error: err instanceof Error ? err.message : "Failed to update layout" };
+    }
+  }
+
+  // ===== Export Tools =====
+
+  private async exportProject(context: AgentContext): Promise<Record<string, unknown>> {
+    try {
+      const exportService = new ProjectExportService(this.prisma);
+      const project = await exportService.exportProject(context.userId);
+
+      return {
+        success: true,
+        projectName: project.name,
+        fileCount: project.files.length,
+        files: project.files.map((f) => f.path),
+        downloadUrl: `/api/export?userId=${context.userId}`,
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to export project" };
+    }
+  }
+
+  private async getModuleSources(context: AgentContext): Promise<Record<string, unknown>> {
+    try {
+      const exportService = new ProjectExportService(this.prisma);
+      const sources = await exportService.getModuleSources(context.userId);
+
+      return {
+        success: true,
+        modules: sources,
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to get module sources" };
     }
   }
 }

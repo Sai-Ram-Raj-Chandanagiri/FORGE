@@ -12,3 +12,4 @@ export { AgentOrchestrator, createOrchestrator } from "./orchestrator";
 
 // Tool definitions (consumed by apps/web for tool result rendering)
 export { LAYOUT_TOOLS } from "./tools/layout-tools";
+export { EXPORT_TOOLS } from "./tools/export-tools";

@@ -8,6 +8,9 @@ import {
   ExternalLink,
   Save,
   Loader2,
+  Download,
+  GitBranch,
+  Package,
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { trpc } from "@/lib/trpc-client";
@@ -245,12 +248,99 @@ export default function PlatformSettingsPage() {
         )}
       </div>
 
+      {/* Export Section */}
+      <div className="rounded-xl border bg-card p-6">
+        <div className="mb-4 flex items-center gap-2">
+          <Download className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold">Export Project</h2>
+        </div>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Download your platform as a portable project with docker-compose, nginx config, dashboard, and scripts. Run it anywhere with <code className="rounded bg-muted px-1 py-0.5 text-xs">docker compose up</code>.
+        </p>
+        <a
+          href="/api/export"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+        >
+          <Download className="h-4 w-4" />
+          Download ZIP
+        </a>
+      </div>
+
+      {/* Module Sources Section */}
+      <ModuleSourcesSection />
+
       {/* Info */}
       {data.layout && (
         <p className="text-xs text-muted-foreground">
           Last updated: {new Date(data.layout.updatedAt).toLocaleString()}
         </p>
       )}
+    </div>
+  );
+}
+
+function ModuleSourcesSection() {
+  const { data: sources, isLoading } = trpc.export.getModuleSources.useQuery() as {
+    data: {
+      moduleSlug: string;
+      moduleName: string;
+      version: string;
+      dockerImage: string;
+      sourceRepoUrl: string | null;
+      documentationUrl: string | null;
+      hasSource: boolean;
+    }[] | undefined;
+    isLoading: boolean;
+  };
+
+  if (isLoading || !sources || sources.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border bg-card p-6">
+      <div className="mb-4 flex items-center gap-2">
+        <GitBranch className="h-5 w-5 text-primary" />
+        <h2 className="text-lg font-semibold">Module Sources</h2>
+      </div>
+      <div className="space-y-3">
+        {sources.map((mod) => (
+          <div key={mod.moduleSlug} className="flex items-center gap-3 rounded-lg border bg-muted/30 px-4 py-3">
+            <Package className="h-4 w-4 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">{mod.moduleName}</p>
+              <p className="text-xs text-muted-foreground">
+                v{mod.version} &middot; <code className="text-[10px]">{mod.dockerImage}</code>
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {mod.sourceRepoUrl && (
+                <a
+                  href={mod.sourceRepoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+                >
+                  <GitBranch className="h-3 w-3" /> Source
+                </a>
+              )}
+              {mod.documentationUrl && (
+                <a
+                  href={mod.documentationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+                >
+                  <ExternalLink className="h-3 w-3" /> Docs
+                </a>
+              )}
+              {!mod.hasSource && (
+                <span className="rounded-md bg-muted px-2 py-1 text-[10px] text-muted-foreground">
+                  Pre-built image
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
