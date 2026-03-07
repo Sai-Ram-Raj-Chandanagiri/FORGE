@@ -8,6 +8,7 @@ import {
 import type { CreateBridgeInput } from "@/lib/validators/workspace";
 import { findAvailablePortInRange } from "./port-allocator";
 import { generateDashboardShell, type PlatformLayoutConfig } from "./workspace-dashboard";
+import { generateAutoLayout, type DeployedModule } from "./layout-generator";
 import { logger } from "@/lib/logger";
 
 const log = logger.forService("WorkspaceService");
@@ -330,7 +331,10 @@ export class WorkspaceService {
       // 1. Connect container to workspace network
       await this.networkManager.connectContainer(workspace.networkName, deployment.containerName);
 
-      // 2. Regenerate Nginx config with the new deployment included
+      // 2. Auto-add module to PlatformLayout sidebar if layout exists
+      await this.autoAddToSidebar(workspace.id, deployment.module.slug);
+
+      // 3. Regenerate Nginx config with the new deployment included
       await this.reloadNginxConfig(userId, workspace);
     } catch (err) {
       log.error(` Failed to connect deployment ${deploymentId}:`, err);
@@ -357,6 +361,9 @@ export class WorkspaceService {
 
     try {
       await this.networkManager.disconnectContainer(workspace.networkName, deployment.containerName);
+
+      // Remove module from PlatformLayout sidebar
+      await this.autoRemoveFromSidebar(workspace.id, deploymentId);
 
       // Regenerate Nginx config without this deployment
       if (workspace.status === "active") {
@@ -733,6 +740,141 @@ ${locationBlocks}
       where: { id: workspace.id },
       data: { proxyContainerId: newProxyId },
     });
+  }
+
+  // ==================== AUTO-LAYOUT HELPERS ====================
+
+  /**
+   * Auto-add a newly connected module to the platform sidebar.
+   * If no PlatformLayout exists yet, create one from all connected deployments.
+   */
+  private async autoAddToSidebar(workspaceId: string, moduleSlug: string) {
+    try {
+      const layout = await this.prisma.platformLayout.findUnique({
+        where: { workspaceId },
+      });
+
+      // Get module info for heuristics
+      const mod = await this.prisma.module.findUnique({
+        where: { slug: moduleSlug },
+        select: {
+          slug: true,
+          name: true,
+          categories: { select: { category: { select: { name: true } } } },
+          tags: { select: { tag: { select: { name: true } } } },
+        },
+      });
+      if (!mod) return;
+
+      const deployed: DeployedModule = {
+        slug: mod.slug,
+        name: mod.name,
+        category: mod.categories[0]?.category.name,
+        tags: mod.tags.map((t) => t.tag.name),
+      };
+
+      if (!layout) {
+        // No layout yet — generate one from all connected deployments
+        const workspace = await this.prisma.workspace.findUnique({ where: { id: workspaceId } });
+        if (!workspace) return;
+
+        const allDeployments = await this.prisma.deployment.findMany({
+          where: { userId: workspace.userId, status: "RUNNING" },
+          include: {
+            module: {
+              select: {
+                slug: true,
+                name: true,
+                categories: { select: { category: { select: { name: true } } } },
+                tags: { select: { tag: { select: { name: true } } } },
+              },
+            },
+          },
+        });
+
+        const allModules: DeployedModule[] = allDeployments.map((d) => ({
+          slug: d.module.slug,
+          name: d.module.name,
+          category: d.module.categories[0]?.category.name,
+          tags: d.module.tags.map((t) => t.tag.name),
+        }));
+        const autoLayout = generateAutoLayout(allModules, workspace?.name || undefined);
+
+        await this.prisma.platformLayout.create({
+          data: {
+            workspaceId,
+            name: autoLayout.theme.brandName,
+            layout: autoLayout as unknown as Prisma.InputJsonValue,
+          },
+        });
+      } else {
+        // Layout exists — add this module to sidebar
+        const current = layout.layout as unknown as PlatformLayoutConfig;
+        const alreadyExists = current.sidebar.some((s) => s.moduleSlug === moduleSlug);
+        if (alreadyExists) return;
+
+        const autoItem = generateAutoLayout([deployed]);
+        const newItem = autoItem.sidebar[0];
+        if (!newItem) return;
+
+        newItem.order = current.sidebar.length + 1;
+        current.sidebar.push(newItem);
+
+        // Add group if new
+        if (!current.groups.some((g) => g.name === newItem.group)) {
+          current.groups.push({ name: newItem.group, order: current.groups.length + 1 });
+        }
+
+        await this.prisma.platformLayout.update({
+          where: { workspaceId },
+          data: { layout: current as unknown as Prisma.InputJsonValue },
+        });
+      }
+    } catch (err) {
+      log.warn("autoAddToSidebar failed (non-fatal)", { workspaceId, moduleSlug, error: err });
+    }
+  }
+
+  /**
+   * Auto-remove a disconnected module from the platform sidebar.
+   */
+  private async autoRemoveFromSidebar(workspaceId: string, deploymentId: string) {
+    try {
+      const layout = await this.prisma.platformLayout.findUnique({
+        where: { workspaceId },
+      });
+      if (!layout) return;
+
+      // Look up the deployment to find which module slug to remove
+      const deployment = await this.prisma.deployment.findUnique({
+        where: { id: deploymentId },
+        select: { module: { select: { slug: true } } },
+      });
+      if (!deployment) return;
+
+      const current = layout.layout as unknown as PlatformLayoutConfig;
+      const slug = deployment.module.slug;
+
+      current.sidebar = current.sidebar.filter((s) => s.moduleSlug !== slug);
+      // Re-order remaining items
+      current.sidebar.forEach((s, i) => { s.order = i + 1; });
+
+      // Reset homepage if it was the removed module
+      if (current.homepage === slug) {
+        current.homepage = "dashboard";
+      }
+
+      // Remove empty groups
+      const usedGroups = new Set(current.sidebar.map((s) => s.group));
+      current.groups = current.groups.filter((g) => usedGroups.has(g.name));
+
+      await this.prisma.platformLayout.update({
+        where: { workspaceId },
+        data: { layout: current as unknown as Prisma.InputJsonValue },
+      });
+    } catch (err) {
+      log.warn("autoRemoveFromSidebar failed (non-fatal)", { workspaceId, deploymentId, error: err });
+    }
   }
 
   // ==================== PRIVATE HELPERS ====================
