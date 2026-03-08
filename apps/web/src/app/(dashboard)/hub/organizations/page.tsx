@@ -58,7 +58,7 @@ export default function OrganizationsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <BackButton fallback="/settings" label="Back" />
+        <BackButton fallback="/hub" label="Back" />
         <div className="flex items-center justify-between">
           <div>
             <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
@@ -173,7 +173,10 @@ export default function OrganizationsPage() {
                     <h4 className="text-sm font-semibold text-muted-foreground">
                       Members
                     </h4>
-                    <button className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                    <button
+                      onClick={() => alert("Member invitations are coming soon.")}
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
                       <UserPlus className="h-3 w-3" />
                       Invite Member
                     </button>
@@ -210,7 +213,10 @@ export default function OrganizationsPage() {
                           {member.role}
                         </span>
                         {member.role !== "OWNER" && (
-                          <button className="text-muted-foreground hover:text-destructive">
+                          <button
+                            onClick={() => alert("Member removal is coming soon.")}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         )}

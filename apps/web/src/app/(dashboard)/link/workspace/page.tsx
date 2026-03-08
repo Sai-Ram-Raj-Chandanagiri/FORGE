@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Boxes,
   Power,
@@ -13,6 +14,7 @@ import {
   Server,
   Globe,
   AlertCircle,
+  Settings,
 } from "lucide-react";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc-client";
@@ -127,6 +129,13 @@ export default function WorkspacePage() {
 
         {workspace && (
           <div className="flex items-center gap-3">
+            <Link
+              href="/link/workspace/settings"
+              className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+            >
+              <Settings className="h-4 w-4" />
+              Settings
+            </Link>
             {isActive && workspace.portalUrl && (
               <a
                 href={workspace.portalUrl}

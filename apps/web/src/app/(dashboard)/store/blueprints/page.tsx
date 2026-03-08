@@ -60,11 +60,20 @@ export default function BrowseBlueprintsPage() {
       <div className="flex items-center gap-4">
         <BackButton fallback="/store" label="Store" />
         <div className="flex-1">
-          <h1 className="text-2xl font-bold">Blueprints</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <Layers className="h-7 w-7 text-primary" />
+            Blueprint Marketplace
+          </h1>
           <p className="text-sm text-muted-foreground">
             Pre-configured platform compositions — deploy a full platform in one click
           </p>
         </div>
+        <Link
+          href="/link/blueprints"
+          className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted"
+        >
+          My Blueprints
+        </Link>
       </div>
 
       {/* Search & Filters */}

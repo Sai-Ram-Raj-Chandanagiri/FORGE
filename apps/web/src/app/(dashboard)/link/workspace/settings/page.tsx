@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   Palette,
   Layout,
+  Settings,
   GripVertical,
   ExternalLink,
   Save,
@@ -74,7 +75,10 @@ export default function PlatformSettingsPage() {
       <div className="space-y-6">
         <div className="flex items-center gap-4">
           <BackButton fallback="/link/workspace" label="Back" />
-          <h1 className="text-2xl font-bold">Platform Settings</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <Settings className="h-7 w-7 text-primary" />
+            Platform Settings
+          </h1>
         </div>
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <Layout className="mb-4 h-10 w-10 text-muted-foreground/50" />
@@ -82,8 +86,14 @@ export default function PlatformSettingsPage() {
             No platform layout configured yet.
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Use the <strong>Platform Composer</strong> agent to build and configure your platform.
+            Use the Platform Composer agent to build and configure your platform.
           </p>
+          <a
+            href="/agents/chat?agent=composer"
+            className="mt-4 inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90"
+          >
+            Open Composer
+          </a>
         </div>
       </div>
     );
@@ -131,7 +141,10 @@ export default function PlatformSettingsPage() {
       <div className="flex items-center gap-4">
         <BackButton fallback="/link/workspace" label="Back" />
         <div className="flex-1">
-          <h1 className="text-2xl font-bold">Platform Settings</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <Settings className="h-7 w-7 text-primary" />
+            Platform Settings
+          </h1>
           <p className="text-sm text-muted-foreground">
             Customize your unified platform dashboard
           </p>

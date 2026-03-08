@@ -115,7 +115,7 @@ export default function BillingPage() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <BackButton fallback="/settings" label="Back" />
+        <BackButton fallback="/link" label="Back" />
         <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
           <CreditCard className="h-8 w-8 text-primary" />
           Billing & Usage

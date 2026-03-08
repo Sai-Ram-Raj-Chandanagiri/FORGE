@@ -61,7 +61,10 @@ export default function MyBlueprintsPage() {
       <div className="flex items-center gap-4">
         <BackButton fallback="/link" label="Back" />
         <div className="flex-1">
-          <h1 className="text-2xl font-bold">My Blueprints</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <Layers className="h-7 w-7 text-primary" />
+            My Blueprints
+          </h1>
           <p className="text-sm text-muted-foreground">
             Saved platform compositions you can redeploy or share
           </p>
@@ -146,10 +149,11 @@ export default function MyBlueprintsPage() {
                       <button
                         onClick={() => publishMut.mutate({ id: bp.id })}
                         disabled={publishMut.isPending}
-                        className="rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
                         title="Publish to store"
                       >
                         <Globe className="h-3.5 w-3.5" />
+                        Publish
                       </button>
                     )}
 

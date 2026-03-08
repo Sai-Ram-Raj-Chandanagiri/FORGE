@@ -29,6 +29,8 @@ import {
   MessageSquare,
   History,
   Workflow,
+  Layers,
+  Globe,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -58,6 +60,7 @@ const pillars: PillarItem[] = [
       { name: "Browse", href: "/store", icon: ShoppingBag },
       { name: "My Modules", href: "/store/my-modules", icon: Package },
       { name: "My Purchases", href: "/store/my-purchases", icon: CreditCard },
+      { name: "Blueprints", href: "/store/blueprints", icon: Globe },
     ],
   },
   {
@@ -69,6 +72,7 @@ const pillars: PillarItem[] = [
       { name: "Deploy New", href: "/link/deploy", icon: PlusCircle },
       { name: "Workspace", href: "/link/workspace", icon: Boxes },
       { name: "Billing & Usage", href: "/link/billing", icon: CreditCard },
+      { name: "My Blueprints", href: "/link/blueprints", icon: Layers },
     ],
   },
   {
@@ -192,24 +196,33 @@ export function Sidebar() {
                   <pillar.icon className="h-5 w-5 flex-shrink-0" />
                 </Link>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => togglePillar(pillar.name)}
+                <div
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                    "flex w-full items-center rounded-lg text-sm font-medium transition-colors",
                     isPillarActive
                       ? "bg-sidebar-accent/50 text-sidebar-primary"
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
                   )}
                 >
-                  <pillar.icon className="h-5 w-5 flex-shrink-0" />
-                  <span className="flex-1 text-left">{pillar.name}</span>
-                  {isExpanded ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                </button>
+                  <Link
+                    href={pillar.href}
+                    className="flex flex-1 items-center gap-3 px-3 py-2.5"
+                  >
+                    <pillar.icon className="h-5 w-5 flex-shrink-0" />
+                    <span className="flex-1 text-left">{pillar.name}</span>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => togglePillar(pillar.name)}
+                    className="px-2 py-2.5 text-sidebar-foreground/50 hover:text-sidebar-foreground"
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               )}
 
               {/* Sub-items */}

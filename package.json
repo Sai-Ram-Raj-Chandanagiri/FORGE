@@ -14,7 +14,8 @@
     "db:studio": "pnpm --filter @forge/db prisma studio",
     "db:generate": "pnpm --filter @forge/db prisma generate",
     "test:e2e": "playwright test",
-    "clean": "turbo clean && rimraf node_modules"
+    "clean": "turbo run clean",
+    "clean:all": "turbo run clean && rimraf node_modules"
   },
   "packageManager": "pnpm@9.15.0",
   "engines": {

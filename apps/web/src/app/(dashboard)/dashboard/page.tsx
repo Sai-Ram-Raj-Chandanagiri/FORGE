@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { trpc } from "@/lib/trpc-client";
-import { Store, Link2, Package, FolderGit2, Activity } from "lucide-react";
+import { Store, Link2, Package, Users, Activity, Bot, Cpu } from "lucide-react";
 
 function StatCard({
   title,
@@ -34,7 +34,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">
+        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
+          <Cpu className="h-8 w-8 text-primary" />
           Welcome back, {session?.user?.name?.split(" ")[0] || "User"}
         </h1>
         <p className="mt-1 text-muted-foreground">
@@ -80,7 +81,7 @@ export default function DashboardPage() {
       {/* Quick Actions */}
       <div>
         <h2 className="mb-4 text-xl font-semibold">Quick Actions</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <a
             href="/store"
             className="group flex items-center gap-4 rounded-xl border p-5 transition-shadow hover:shadow-md"
@@ -110,11 +111,23 @@ export default function DashboardPage() {
             className="group flex items-center gap-4 rounded-xl border p-5 transition-shadow hover:shadow-md"
           >
             <div className="rounded-lg bg-primary/10 p-3">
-              <FolderGit2 className="h-6 w-6 text-primary" />
+              <Users className="h-6 w-6 text-primary" />
             </div>
             <div>
               <h3 className="font-semibold group-hover:text-primary">Explore Hub</h3>
               <p className="text-sm text-muted-foreground">Discover developer projects</p>
+            </div>
+          </a>
+          <a
+            href="/agents"
+            className="group flex items-center gap-4 rounded-xl border p-5 transition-shadow hover:shadow-md"
+          >
+            <div className="rounded-lg bg-rose-500/10 p-3">
+              <Bot className="h-6 w-6 text-rose-500" />
+            </div>
+            <div>
+              <h3 className="font-semibold group-hover:text-primary">AI Agents</h3>
+              <p className="text-sm text-muted-foreground">Compose platforms with AI agents</p>
             </div>
           </a>
         </div>

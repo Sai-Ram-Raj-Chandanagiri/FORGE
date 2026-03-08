@@ -4,7 +4,9 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   transpilePackages: ["@forge/db", "@forge/docker-manager", "@forge/agent-sdk"],
-  serverExternalPackages: ["dockerode", "docker-modem", "ssh2"],
+  experimental: {
+    serverComponentsExternalPackages: ["dockerode", "docker-modem", "ssh2"],
+  },
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.externals = config.externals || [];

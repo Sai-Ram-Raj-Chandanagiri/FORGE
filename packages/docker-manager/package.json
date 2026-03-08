@@ -6,7 +6,8 @@
   "types": "./src/index.ts",
   "scripts": {
     "type-check": "tsc --noEmit",
-    "test": "jest"
+    "test": "jest",
+    "clean": "rimraf dist"
   },
   "dependencies": {
     "dockerode": "^4.0.2"

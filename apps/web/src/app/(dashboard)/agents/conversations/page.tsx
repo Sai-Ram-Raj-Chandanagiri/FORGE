@@ -6,6 +6,7 @@ import {
   Workflow,
   Activity,
   Plug,
+  Layers,
   MessageSquare,
   Clock,
 } from "lucide-react";
@@ -17,6 +18,12 @@ const AGENT_META: Record<
   string,
   { label: string; icon: typeof Bot; color: string; bgColor: string }
 > = {
+  composer: {
+    label: "Platform Composer",
+    icon: Layers,
+    color: "text-rose-500",
+    bgColor: "bg-rose-500/10",
+  },
   setup: {
     label: "Setup Agent",
     icon: Bot,

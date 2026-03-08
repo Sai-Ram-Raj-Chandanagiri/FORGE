@@ -175,8 +175,41 @@ export default function AgentsPage() {
       {/* Agent Cards */}
       <div>
         <h2 className="mb-4 text-lg font-semibold">Choose an Agent</h2>
+
+        {/* Featured: Platform Composer — full width */}
+        {(() => {
+          const composer = AGENT_CARDS.find((a) => a.featured);
+          if (!composer) return null;
+          const Icon = composer.icon;
+          return (
+            <Link
+              href={composer.href}
+              className="group mb-4 flex items-start gap-4 rounded-xl border-2 border-primary/20 bg-card p-6 transition-all hover:shadow-md hover:border-primary/40"
+            >
+              <div className={`rounded-lg p-3 ${composer.bgColor}`}>
+                <Icon className={`h-7 w-7 ${composer.color}`} />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-semibold group-hover:text-primary transition-colors">
+                    {composer.label}
+                  </h3>
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                    Featured
+                  </span>
+                  <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {composer.description}
+                </p>
+              </div>
+            </Link>
+          );
+        })()}
+
+        {/* Other agents — 2x2 grid */}
         <div className="grid gap-4 sm:grid-cols-2">
-          {AGENT_CARDS.map((agent) => {
+          {AGENT_CARDS.filter((a) => !a.featured).map((agent) => {
             const Icon = agent.icon;
             return (
               <Link

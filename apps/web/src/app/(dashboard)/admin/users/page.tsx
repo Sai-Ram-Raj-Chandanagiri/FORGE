@@ -64,23 +64,25 @@ export default function AdminUsersPage() {
   };
 
   const getRoleBadgeClasses = (role: string) => {
-    switch (role.toLowerCase()) {
-      case "admin":
+    switch (role) {
+      case "ADMIN":
         return "bg-red-500/10 text-red-500 border-red-500/20";
-      case "moderator":
+      case "ORG_ADMIN":
         return "bg-amber-500/10 text-amber-500 border-amber-500/20";
+      case "DEVELOPER":
+        return "bg-purple-500/10 text-purple-500 border-purple-500/20";
       default:
         return "bg-blue-500/10 text-blue-500 border-blue-500/20";
     }
   };
 
   const getStatusBadgeClasses = (status: string) => {
-    switch (status.toLowerCase()) {
-      case "active":
+    switch (status) {
+      case "ACTIVE":
         return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
-      case "suspended":
+      case "SUSPENDED":
         return "bg-red-500/10 text-red-500 border-red-500/20";
-      case "pending":
+      case "PENDING_VERIFICATION":
         return "bg-amber-500/10 text-amber-500 border-amber-500/20";
       default:
         return "bg-zinc-500/10 text-zinc-500 border-zinc-500/20";
@@ -119,9 +121,10 @@ export default function AdminUsersPage() {
           className="h-10 rounded-lg border bg-background px-3 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2"
         >
           <option value="">All Roles</option>
-          <option value="admin">Admin</option>
-          <option value="moderator">Moderator</option>
-          <option value="user">User</option>
+          <option value="ADMIN">Admin</option>
+          <option value="ORG_ADMIN">Org Admin</option>
+          <option value="DEVELOPER">Developer</option>
+          <option value="USER">User</option>
         </select>
         <select
           value={statusFilter}
@@ -129,9 +132,9 @@ export default function AdminUsersPage() {
           className="h-10 rounded-lg border bg-background px-3 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2"
         >
           <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="suspended">Suspended</option>
-          <option value="pending">Pending</option>
+          <option value="ACTIVE">Active</option>
+          <option value="SUSPENDED">Suspended</option>
+          <option value="PENDING_VERIFICATION">Pending</option>
         </select>
       </div>
 

@@ -143,18 +143,24 @@ export default function AdminPage() {
             View system activity and audit trail.
           </p>
         </Link>
-        <Link
-          href="/admin"
-          className="group rounded-xl border bg-card p-5 transition-all hover:shadow-sm hover:border-primary/20"
+        <div
+          className="rounded-xl border bg-card p-5"
         >
           <BarChart3 className="mb-2 h-6 w-6 text-primary" />
-          <h3 className="font-semibold group-hover:text-primary transition-colors">
+          <h3 className="font-semibold">
             System Health
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Monitor platform health and performance.
+            {metrics ? (
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                All systems operational
+              </span>
+            ) : (
+              "Loading metrics..."
+            )}
           </p>
-        </Link>
+        </div>
       </div>
 
       {/* Module Review Queue */}
@@ -171,7 +177,9 @@ export default function AdminPage() {
                 className="flex items-center gap-4 rounded-xl border bg-card p-4"
               >
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-medium">{mod.name}</h3>
+                  <Link href={`/store/${mod.slug}`} className="font-medium hover:underline hover:text-primary">
+                    {mod.name}
+                  </Link>
                   <p className="mt-0.5 truncate text-sm text-muted-foreground">
                     {mod.shortDescription}
                   </p>
