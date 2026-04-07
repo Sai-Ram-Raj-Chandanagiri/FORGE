@@ -4,10 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
-  Store,
-  Link2,
-  Users,
-  Bot,
   Settings,
   LayoutDashboard,
   Shield,
@@ -15,89 +11,16 @@ import {
   ChevronLeft,
   ChevronDown,
   ChevronRight,
-  ShoppingBag,
-  Package,
-  Rocket,
-  PlusCircle,
-  Boxes,
-  CreditCard,
-  FolderOpen,
-  Compass,
-  Upload,
-  ClipboardList,
-  Building2,
-  MessageSquare,
-  History,
-  Workflow,
-  Layers,
-  Globe,
-  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isAdmin as checkAdmin } from "@/lib/role-utils";
 import { trpc } from "@/lib/trpc-client";
 import { useState, useEffect } from "react";
-
-interface SubItem {
-  name: string;
-  href: string;
-  icon: LucideIcon;
-}
-
-interface PillarItem {
-  name: string;
-  href: string;
-  icon: LucideIcon;
-  subItems: SubItem[];
-}
-
-const pillars: PillarItem[] = [
-  {
-    name: "FORGE Store",
-    href: "/store",
-    icon: Store,
-    subItems: [
-      { name: "Browse", href: "/store", icon: ShoppingBag },
-      { name: "My Modules", href: "/store/my-modules", icon: Package },
-      { name: "My Purchases", href: "/store/my-purchases", icon: CreditCard },
-      { name: "Blueprints", href: "/store/blueprints", icon: Globe },
-    ],
-  },
-  {
-    name: "FORGE Link",
-    href: "/link",
-    icon: Link2,
-    subItems: [
-      { name: "Deployments", href: "/link", icon: Rocket },
-      { name: "Deploy New", href: "/link/deploy", icon: PlusCircle },
-      { name: "Workspace", href: "/link/workspace", icon: Boxes },
-      { name: "Billing & Usage", href: "/link/billing", icon: CreditCard },
-      { name: "My Blueprints", href: "/link/blueprints", icon: Layers },
-    ],
-  },
-  {
-    name: "FORGE Hub",
-    href: "/hub",
-    icon: Users,
-    subItems: [
-      { name: "Projects", href: "/hub", icon: FolderOpen },
-      { name: "Explore", href: "/hub/explore", icon: Compass },
-      { name: "Publish", href: "/hub/publish", icon: Upload },
-      { name: "Submissions", href: "/hub/submissions", icon: ClipboardList },
-      { name: "Organizations", href: "/hub/organizations", icon: Building2 },
-    ],
-  },
-  {
-    name: "AI Agents",
-    href: "/agents",
-    icon: Bot,
-    subItems: [
-      { name: "Chat", href: "/agents/chat", icon: MessageSquare },
-      { name: "Conversations", href: "/agents/conversations", icon: History },
-      { name: "Workflows", href: "/agents/workflows", icon: Workflow },
-    ],
-  },
-];
+import {
+  pillars,
+  standaloneTopLinks,
+  standaloneBottomLinks,
+} from "./nav-config";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -172,6 +95,28 @@ export function Sidebar() {
           <LayoutDashboard className="h-5 w-5 flex-shrink-0" />
           {!collapsed && <span>Dashboard</span>}
         </Link>
+
+        {/* Standalone top links (e.g. Insights) */}
+        {standaloneTopLinks.map((link) => {
+          const isActive = link.match(pathname);
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                isActive
+                  ? "bg-sidebar-accent text-sidebar-primary"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                collapsed && "justify-center px-2",
+              )}
+              title={collapsed ? link.name : undefined}
+            >
+              <link.icon className="h-5 w-5 flex-shrink-0" />
+              {!collapsed && <span>{link.name}</span>}
+            </Link>
+          );
+        })}
 
         {/* Pillar sections */}
         {pillars.map((pillar) => {
@@ -257,7 +202,27 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom navigation */}
-      <div className="border-t px-2 py-4">
+      <div className="space-y-1 border-t px-2 py-4">
+        {standaloneBottomLinks.map((link) => {
+          const isActive = link.match(pathname);
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                isActive
+                  ? "bg-sidebar-accent text-sidebar-primary"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                collapsed && "justify-center px-2",
+              )}
+              title={collapsed ? link.name : undefined}
+            >
+              <link.icon className="h-5 w-5 flex-shrink-0" />
+              {!collapsed && <span>{link.name}</span>}
+            </Link>
+          );
+        })}
         <Link
           href="/settings"
           className={cn(
