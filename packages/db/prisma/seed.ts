@@ -447,6 +447,52 @@ async function main() {
   });
   console.log("  Created sample submission: Expense Tracker Lite");
 
+  // ==================== CREDIT PACKS (Phase 8) ====================
+  const creditPacks = [
+    {
+      name: "Starter",
+      description: "100 credits — ideal for trying out agents and sandbox demos.",
+      credits: 100,
+      price: 5,
+      stripePriceId: process.env.CREDIT_PACK_STARTER_PRICE_ID ?? null,
+    },
+    {
+      name: "Pro",
+      description: "500 credits — for regular agent usage and deployments.",
+      credits: 500,
+      price: 20,
+      stripePriceId: process.env.CREDIT_PACK_PRO_PRICE_ID ?? null,
+    },
+    {
+      name: "Enterprise",
+      description: "1500 credits — best value for teams and heavy workloads.",
+      credits: 1500,
+      price: 50,
+      stripePriceId: process.env.CREDIT_PACK_ENTERPRISE_PRICE_ID ?? null,
+    },
+  ];
+  for (const pack of creditPacks) {
+    await prisma.creditPack.upsert({
+      where: { name: pack.name },
+      update: {
+        credits: pack.credits,
+        price: pack.price,
+        stripePriceId: pack.stripePriceId,
+        description: pack.description,
+        isActive: true,
+      },
+      create: {
+        name: pack.name,
+        description: pack.description,
+        credits: pack.credits,
+        price: pack.price,
+        stripePriceId: pack.stripePriceId,
+        isActive: true,
+      },
+    });
+  }
+  console.log(`  Seeded ${creditPacks.length} credit packs`);
+
   console.log("Seed completed successfully.");
 }
 

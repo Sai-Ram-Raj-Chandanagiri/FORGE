@@ -10,12 +10,21 @@ import { ModuleService } from "./module.service";
 import { DeploymentService } from "./deployment.service";
 import { WorkspaceService } from "./workspace.service";
 import { ProjectExportService } from "./project-export.service";
+import { ActionQueueService } from "./action-queue.service";
+import { GovernanceService } from "./governance.service";
+import { CreditService } from "./credit.service";
+import type { McpService } from "./mcp.service";
 
 export class ForgeToolExecutor implements ToolExecutor {
   private prisma: PrismaClient;
+  private mcpService?: McpService;
 
   constructor(prisma: PrismaClient) {
     this.prisma = prisma;
+  }
+
+  setMcpService(mcpService: McpService): void {
+    this.mcpService = mcpService;
   }
 
   async execute(
@@ -92,8 +101,61 @@ export class ForgeToolExecutor implements ToolExecutor {
       case "deploy_blueprint":
         return this.deployBlueprint(args, context);
 
+      // ===== Action Queue Tools =====
+      case "enqueue_action":
+        return this.enqueueAction(args, context);
+      case "list_pending_approvals":
+        return this.listPendingApprovals(args, context);
+
+      // ===== Cross-Module Tools =====
+      case "query_module_data":
+        return this.queryModuleData(args, context);
+      case "aggregate_cross_module":
+        return this.aggregateCrossModule(args, context);
+
       default:
+        // MCP tool fallback: check if tool name matches an MCP connection tool
+        if (this.mcpService) {
+          return this.executeMcpTool(toolName, args, context);
+        }
         return { error: `Unknown tool: ${toolName}`, success: false };
+    }
+  }
+
+  private async executeMcpTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    if (!this.mcpService) {
+      return { error: `Unknown tool: ${toolName}`, success: false };
+    }
+
+    try {
+      // Tool name format: {connectionName}_{toolName}
+      const allTools = await this.mcpService.getAllUserTools(context.userId);
+      const matchingTool = allTools.find((t) => t.name === toolName);
+
+      if (!matchingTool) {
+        return { error: `Unknown tool: ${toolName}`, success: false };
+      }
+
+      // Extract original tool name (strip connection prefix)
+      const originalToolName = toolName.replace(`${matchingTool.connectionName}_`, "");
+
+      const result = await this.mcpService.executeExternalTool(
+        matchingTool.connectionId,
+        context.userId,
+        originalToolName,
+        args,
+      );
+
+      if (result.success) {
+        return { success: true, data: result.data };
+      }
+      return { error: result.error ?? "MCP tool execution failed", success: false };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "MCP tool execution failed", success: false };
     }
   }
 
@@ -928,6 +990,223 @@ export class ForgeToolExecutor implements ToolExecutor {
     } catch (err) {
       return { error: err instanceof Error ? err.message : "Failed to search blueprints" };
     }
+  }
+
+  // ===== Action Queue Tools =====
+
+  private async enqueueAction(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    const actionType = args.actionType as string;
+    if (!actionType) return { error: "actionType is required" };
+
+    const payload = (args.payload as Record<string, unknown>) || {};
+    const agentType = (context.metadata?.agentType as string) || "unknown";
+
+    try {
+      // Governance check before enqueuing
+      const governance = new GovernanceService(this.prisma);
+      const gate = await governance.checkAction(context.userId, agentType, actionType);
+      if (!gate.allowed) {
+        return { error: gate.reason ?? "Action blocked by guardrail", success: false };
+      }
+      const requiresApproval =
+        (args.requiresApproval as boolean | undefined) ?? gate.requiresApproval ?? true;
+
+      const service = new ActionQueueService(this.prisma);
+      const item = await service.enqueueAction(context.userId, {
+        agentType,
+        actionType,
+        payload,
+        requiresApproval,
+        scheduledFor: args.scheduledFor ? new Date(args.scheduledFor as string) : undefined,
+        conversationId: context.conversationId,
+        priority: (args.priority as "LOW" | "NORMAL" | "HIGH" | "CRITICAL") || "NORMAL",
+      });
+
+      return {
+        success: true,
+        actionId: item.id,
+        status: item.status,
+        requiresApproval: item.requiresApproval,
+        scheduledFor: item.scheduledFor?.toISOString() ?? null,
+        message: item.requiresApproval
+          ? "Action queued and awaiting your approval. Visit /agents/approvals to review."
+          : "Action queued for immediate execution.",
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to enqueue action" };
+    }
+  }
+
+  private async listPendingApprovals(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    try {
+      const service = new ActionQueueService(this.prisma);
+      const result = await service.listPendingApprovals(context.userId, {
+        page: (args.page as number) || 1,
+        limit: Math.min((args.limit as number) || 20, 50),
+      });
+
+      return {
+        success: true,
+        items: result.items.map((item) => ({
+          id: item.id,
+          actionType: item.actionType,
+          agentType: item.agentType,
+          priority: item.priority,
+          payload: item.payload,
+          createdAt: item.createdAt.toISOString(),
+        })),
+        total: result.total,
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to list approvals" };
+    }
+  }
+
+  // ===== Cross-Module Tools =====
+
+  private async queryModuleData(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    const deploymentId = args.deploymentId as string;
+    const endpoint = args.endpoint as string;
+    if (!deploymentId || !endpoint)
+      return { error: "deploymentId and endpoint are required" };
+
+    // Sanitize endpoint
+    if (endpoint.includes("..") || endpoint.startsWith("http")) {
+      return { error: "Invalid endpoint — must be a relative path like /api/data" };
+    }
+
+    try {
+      const deployment = await this.prisma.deployment.findFirst({
+        where: { id: deploymentId, userId: context.userId },
+        select: { id: true, assignedPort: true, status: true },
+      });
+
+      if (!deployment) return { error: "Deployment not found or not owned by you" };
+      if (deployment.status !== "RUNNING") return { error: "Deployment is not running" };
+      if (!deployment.assignedPort) return { error: "Deployment has no assigned port" };
+
+      // Deduct 1 credit per cross-module query (non-blocking on insufficient — return error)
+      const credits = new CreditService(this.prisma);
+      const check = await credits.checkSufficientCredits(context.userId, 1);
+      if (!check.sufficient) {
+        return { error: "Insufficient credits for cross-module query (need 1 credit)", success: false };
+      }
+      await credits
+        .deductCredits(context.userId, 1, "CROSS_MODULE_QUERY", `Query ${deploymentId}${endpoint}`, deploymentId)
+        .catch((err) => {
+          // Log but don't block — deduction failure shouldn't hard-fail tool
+          console.error("Credit deduction failed for cross-module query", err);
+        });
+
+      const method = (args.method as string) || "GET";
+      const url = `http://localhost:${deployment.assignedPort}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      const fetchOptions: RequestInit = {
+        method,
+        signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+      };
+
+      if (method === "POST" && args.body) {
+        fetchOptions.body = JSON.stringify(args.body);
+      }
+
+      const response = await fetch(url, fetchOptions);
+      clearTimeout(timeout);
+
+      const text = await response.text();
+      // Limit response size to 1MB
+      if (text.length > 1024 * 1024) {
+        return {
+          success: true,
+          truncated: true,
+          data: text.slice(0, 10000),
+          message: "Response too large, showing first 10KB",
+        };
+      }
+
+      try {
+        const data = JSON.parse(text) as unknown;
+        return { success: true, data, statusCode: response.status };
+      } catch {
+        return { success: true, data: text, statusCode: response.status };
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        return { error: "Module request timed out after 10 seconds" };
+      }
+      return { error: err instanceof Error ? err.message : "Failed to query module" };
+    }
+  }
+
+  private async aggregateCrossModule(
+    args: Record<string, unknown>,
+    context: AgentContext,
+  ): Promise<Record<string, unknown>> {
+    const queries = args.queries as
+      | { deploymentId: string; endpoint: string; label: string }[]
+      | undefined;
+    if (!queries || !Array.isArray(queries))
+      return { error: "queries array is required" };
+    if (queries.length > 5) return { error: "Maximum 5 queries per aggregation" };
+
+    const mergeMode = (args.mergeMode as string) || "merge";
+    const results: Record<string, unknown> = {};
+    const errors: string[] = [];
+
+    // Execute sequentially to prevent resource spikes
+    for (const query of queries) {
+      const result = await this.queryModuleData(
+        {
+          deploymentId: query.deploymentId,
+          endpoint: query.endpoint,
+          method: "GET",
+        },
+        context,
+      );
+
+      if (result.error) {
+        errors.push(`${query.label}: ${result.error as string}`);
+      } else {
+        results[query.label] = result.data;
+      }
+    }
+
+    if (mergeMode === "summary") {
+      const summary: Record<string, unknown> = {};
+      for (const [label, data] of Object.entries(results)) {
+        if (Array.isArray(data)) {
+          summary[label] = { count: data.length, type: "array" };
+        } else if (typeof data === "object" && data !== null) {
+          summary[label] = {
+            fields: Object.keys(data as Record<string, unknown>).length,
+            type: "object",
+          };
+        } else {
+          summary[label] = { type: typeof data };
+        }
+      }
+      return { success: true, summary, errors: errors.length > 0 ? errors : undefined };
+    }
+
+    return {
+      success: true,
+      data: results,
+      sourceCount: Object.keys(results).length,
+      errors: errors.length > 0 ? errors : undefined,
+    };
   }
 
   private async deployBlueprint(

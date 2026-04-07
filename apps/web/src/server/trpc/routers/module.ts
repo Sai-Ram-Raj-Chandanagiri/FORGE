@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, developerProcedure } from "../trpc";
+import { router, publicProcedure, developerProcedure } from "../trpc";
 import {
   createModuleSchema,
   updateModuleSchema,
@@ -7,8 +7,11 @@ import {
   buildFromRepoSchema,
   getBuildStatusSchema,
   detectProjectSchema,
+  publishAgentModuleSchema,
 } from "@/lib/validators/module";
 import { ModuleService } from "@/server/services/module.service";
+import { AgentMarketplaceService } from "@/server/services/agent-marketplace.service";
+import { SecurityScannerService } from "@/server/services/security-scanner.service";
 import { ImageBuilder, ProjectDetector } from "@forge/docker-manager";
 import * as path from "path";
 import * as fs from "fs";
@@ -87,6 +90,29 @@ export const moduleRouter = router({
     .query(async ({ ctx, input }) => {
       const moduleService = new ModuleService(ctx.prisma);
       return moduleService.getBuildStatus(ctx.user.id, input.versionId);
+    }),
+
+  // ==================== Agent Marketplace ====================
+
+  publishAgentModule: developerProcedure
+    .input(publishAgentModuleSchema)
+    .mutation(async ({ ctx, input }) => {
+      const service = new AgentMarketplaceService(ctx.prisma);
+      return service.publishAgentModule(ctx.user.id, input);
+    }),
+
+  getComplianceSummary: publicProcedure
+    .input(z.object({ moduleId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const service = new SecurityScannerService(ctx.prisma);
+      return service.getComplianceSummary(input.moduleId);
+    }),
+
+  triggerSecurityScan: developerProcedure
+    .input(z.object({ versionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const service = new SecurityScannerService(ctx.prisma);
+      return service.scanModule(input.versionId, ctx.user.id);
     }),
 
   /**

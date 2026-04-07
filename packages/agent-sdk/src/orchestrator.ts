@@ -4,10 +4,10 @@
  * routes requests, and coordinates A2A communication.
  */
 
-import type { LLMProvider, LLMProviderConfig } from "./llm/provider";
+import type { LLMProvider, LLMProviderConfig, LLMTool } from "./llm/provider";
 import { GeminiProvider } from "./llm/gemini-provider";
 import { ClaudeProvider } from "./llm/claude-provider";
-import type { AgentType, AgentContext, ToolExecutor } from "./agents/base-agent";
+import type { AgentType, AgentConfig, AgentContext, ToolExecutor, ChatResult } from "./agents/base-agent";
 import { BaseAgent } from "./agents/base-agent";
 import { SetupAgent } from "./agents/setup-agent";
 import { WorkflowAgent } from "./agents/workflow-agent";
@@ -21,6 +21,7 @@ export interface OrchestratorConfig {
   llmProvider: "gemini" | "claude";
   llmConfig: LLMProviderConfig;
   toolExecutor?: ToolExecutor;
+  mcpTools?: LLMTool[];
 }
 
 export class AgentOrchestrator {
@@ -28,6 +29,7 @@ export class AgentOrchestrator {
   private agents: Map<AgentType, BaseAgent> = new Map();
   private a2aClient: A2AClient;
   private toolExecutor?: ToolExecutor;
+  private mcpTools: LLMTool[] = [];
 
   constructor(config: OrchestratorConfig) {
     this.provider =
@@ -36,6 +38,7 @@ export class AgentOrchestrator {
         : new GeminiProvider(config.llmConfig);
 
     this.toolExecutor = config.toolExecutor;
+    this.mcpTools = config.mcpTools ?? [];
     this.a2aClient = new A2AClient();
 
     // Initialize all agents
@@ -75,13 +78,21 @@ export class AgentOrchestrator {
   }
 
   /**
+   * Set the personality suffix for a specific agent.
+   */
+  setPersonalitySuffix(type: AgentType, suffix: string): void {
+    const agent = this.getAgent(type);
+    (agent as unknown as { config: { personalitySuffix?: string } }).config.personalitySuffix = suffix;
+  }
+
+  /**
    * Send a chat message to a specific agent.
    */
   async chat(
     type: AgentType,
     messages: LLMMessage[],
     context: AgentContext,
-  ): Promise<{ response: string; toolResults?: Record<string, unknown>[] }> {
+  ): Promise<ChatResult> {
     const agent = this.getAgent(type);
     return agent.chat(messages, context);
   }
@@ -91,6 +102,51 @@ export class AgentOrchestrator {
    */
   getA2AClient(): A2AClient {
     return this.a2aClient;
+  }
+
+  /**
+   * Register a custom agent from store-installed config.
+   * Dynamically creates a BaseAgent from the provided configuration.
+   */
+  registerCustomAgent(agentId: string, agentConfig: Omit<AgentConfig, "type">): void {
+    // Create a concrete agent subclass inline from config
+    const provider = this.provider;
+    const toolExecutor = this.toolExecutor;
+
+    const config: AgentConfig = {
+      type: agentId as AgentType,
+      ...agentConfig,
+    };
+
+    // Create a simple concrete agent wrapping BaseAgent
+    const agent = new (class extends BaseAgent {
+      constructor() {
+        super(provider, config, toolExecutor);
+      }
+    })();
+
+    this.agents.set(agentId as AgentType, agent);
+  }
+
+  /**
+   * Unregister a custom agent.
+   */
+  unregisterCustomAgent(agentId: string): boolean {
+    return this.agents.delete(agentId as AgentType);
+  }
+
+  /**
+   * Set MCP tools that will be available to all agents.
+   */
+  setMcpTools(tools: LLMTool[]): void {
+    this.mcpTools = tools;
+  }
+
+  /**
+   * Get current MCP tools.
+   */
+  getMcpTools(): LLMTool[] {
+    return this.mcpTools;
   }
 
   /**

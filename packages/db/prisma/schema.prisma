@@ -73,6 +73,17 @@ model User {
   // Blueprints
   blueprints Blueprint[]
 
+  // Phase 8: Agent Autonomy + Personality + Governance
+  actionQueueItems    ActionQueueItem[]
+  scheduledAgentTasks ScheduledAgentTask[]
+  agentProfiles       AgentProfile[]
+  agentGuardrails     AgentGuardrail[]
+  cachedInsights      CachedInsight[]
+
+  // Phase 8: Credits + MCP
+  creditBalance  CreditBalance?
+  mcpConnections McpConnection[]
+
   @@map("users")
 }
 
@@ -175,6 +186,7 @@ enum ModuleStatus {
 enum ModuleType {
   SINGLE_CONTAINER
   MULTI_CONTAINER
+  AGENT
 }
 
 enum PricingModel {
@@ -235,6 +247,12 @@ model Module {
   deployments     Deployment[]
   screenshots     Screenshot[]
   sandboxSessions SandboxSession[]
+
+  // Agent & Compliance fields (Phase 3)
+  agentConfig      Json?
+  securityScore    Int?
+  complianceBadges String[]  @default([])
+  dataPolicy       Json?
 
   @@index([status, featured])
   @@index([averageRating(sort: Desc)])
@@ -311,6 +329,9 @@ model ModuleVersion {
   buildStatus     String?   // "pending" | "building" | "success" | "failed"
   buildLogs       String?   @db.Text
   builtImageTag   String?
+
+  // Security scan (Phase 3)
+  securityScanResult Json?
 
   module          Module           @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   deployments     Deployment[]
@@ -741,7 +762,8 @@ model AgentConversation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  actions AgentAction[]
+  actions          AgentAction[]
+  actionQueueItems ActionQueueItem[]
 
   @@index([userId, agentType])
   @@map("agent_conversations")
@@ -755,6 +777,12 @@ model AgentAction {
   payload        Json
   result         Json?
   executedAt     DateTime @default(now())
+
+  // Phase 8: AI governance tracking
+  inputTokens   Int?
+  outputTokens  Int?
+  estimatedCost Decimal?  @db.Decimal(10, 6)
+  durationMs    Int?
 
   conversation AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -808,4 +836,262 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([userId, createdAt])
   @@map("audit_logs")
+}
+
+// ============================================================
+// PHASE 8: AGENT AUTONOMY + PERSONALITY + GOVERNANCE
+// ============================================================
+
+enum ActionQueueStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ActionPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum PersonalityPreset {
+  PROFESSIONAL
+  FRIENDLY
+  TECHNICAL
+  CUSTOM
+}
+
+model ActionQueueItem {
+  id               String            @id @default(cuid())
+  userId           String
+  conversationId   String?
+  agentType        String
+  actionType       String
+  payload          Json
+  result           Json?
+  status           ActionQueueStatus @default(PENDING)
+  priority         ActionPriority    @default(NORMAL)
+  requiresApproval Boolean           @default(false)
+  approvedBy       String?
+  approvedAt       DateTime?
+  rejectedReason   String?
+  scheduledFor     DateTime?
+  executedAt       DateTime?
+  errorMessage     String?
+  retryCount       Int               @default(0)
+  maxRetries       Int               @default(3)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation AgentConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([status, scheduledFor])
+  @@index([userId, requiresApproval, status])
+  @@map("action_queue_items")
+}
+
+model ScheduledAgentTask {
+  id             String    @id @default(cuid())
+  userId         String
+  agentType      String
+  name           String
+  description    String?
+  cronExpression String
+  actionType     String
+  payload        Json
+  isActive       Boolean   @default(true)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  runCount       Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isActive, nextRunAt])
+  @@index([userId])
+  @@map("scheduled_agent_tasks")
+}
+
+model AgentProfile {
+  id                       String           @id @default(cuid())
+  userId                   String
+  organizationId           String?
+  agentName                String           @default("FORGE AI")
+  avatarUrl                String?
+  personalityPreset        PersonalityPreset @default(PROFESSIONAL)
+  tone                     String?          @db.Text
+  customSystemPromptSuffix String?          @db.Text
+  communicationTemplates   Json?
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@map("agent_profiles")
+}
+
+model AgentGuardrail {
+  id        String   @id @default(cuid())
+  userId    String
+  agentType String?
+  rules     Json
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, agentType])
+  @@map("agent_guardrails")
+}
+
+model AgentAuditEntry {
+  id             String   @id @default(cuid())
+  userId         String
+  conversationId String?
+  agentType      String
+  action         String
+  reasoning      String?  @db.Text
+  inputTokens    Int      @default(0)
+  outputTokens   Int      @default(0)
+  estimatedCost  Decimal  @default(0) @db.Decimal(10, 6)
+  durationMs     Int?
+  success        Boolean  @default(true)
+  errorMessage   String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([userId, agentType, createdAt])
+  @@index([createdAt])
+  @@map("agent_audit_entries")
+}
+
+// ============================================================
+// PHASE 2 — PREDICTIVE INTELLIGENCE
+// ============================================================
+
+model CachedInsight {
+  id          String   @id @default(cuid())
+  userId      String
+  insightType String
+  data        Json
+  validUntil  DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, insightType])
+  @@index([validUntil])
+  @@map("cached_insights")
+}
+
+// ============================================================
+// PHASE 4 — CREDITS & MCP
+// ============================================================
+
+enum CreditTransactionType {
+  PURCHASE
+  AGENT_CHAT
+  DEPLOYMENT_HOUR
+  SANDBOX_SESSION
+  CROSS_MODULE_QUERY
+  MCP_TOOL_CALL
+  BONUS
+  REFUND
+  AUTO_TOP_UP
+}
+
+enum McpTransport {
+  SSE
+  STDIO
+  STREAMABLE_HTTP
+}
+
+enum McpConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
+model CreditBalance {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  balance         Int      @default(0)
+  lifetimeEarned  Int      @default(0)
+  lifetimeSpent   Int      @default(0)
+  autoTopUp       Boolean  @default(false)
+  autoTopUpPackId String?
+  lowBalanceAlert Int      @default(10)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions CreditTransaction[]
+  autoTopUpPack CreditPack?        @relation(fields: [autoTopUpPackId], references: [id])
+
+  @@map("credit_balances")
+}
+
+model CreditTransaction {
+  id          String                @id @default(cuid())
+  balanceId   String
+  amount      Int
+  type        CreditTransactionType
+  description String
+  referenceId String?
+  createdAt   DateTime              @default(now())
+
+  balance CreditBalance @relation(fields: [balanceId], references: [id], onDelete: Cascade)
+
+  @@index([balanceId, createdAt])
+  @@index([type])
+  @@map("credit_transactions")
+}
+
+model CreditPack {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  description   String?
+  credits       Int
+  price         Decimal  @db.Decimal(10, 2)
+  stripePriceId String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  autoTopUpBalances CreditBalance[]
+
+  @@map("credit_packs")
+}
+
+model McpConnection {
+  id           String              @id @default(cuid())
+  userId       String
+  name         String
+  serverUrl    String
+  transport    McpTransport        @default(SSE)
+  authConfig   Json?
+  tools        Json?
+  status       McpConnectionStatus @default(DISCONNECTED)
+  errorMessage String?
+  isActive     Boolean             @default(true)
+  lastTestedAt DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@index([userId])
+  @@map("mcp_connections")
 }

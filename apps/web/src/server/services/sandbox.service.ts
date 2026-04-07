@@ -7,6 +7,7 @@ import {
   type ContainerConfig,
 } from "@forge/docker-manager";
 import { findAvailablePortInRange } from "./port-allocator";
+import { CreditService } from "./credit.service";
 import { logger } from "@/lib/logger";
 
 const log = logger.forService("SandboxService");
@@ -48,6 +49,16 @@ export class SandboxService {
   async startDemo(userId: string, moduleId: string, versionId?: string, durationMinutes?: number) {
     // Validate and resolve duration
     const duration = this.resolveDuration(durationMinutes);
+
+    // Credit pre-check: sandbox sessions cost 2 credits
+    const creditService = new CreditService(this.prisma);
+    const creditCheck = await creditService.checkSufficientCredits(userId, 2);
+    if (!creditCheck.sufficient) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Insufficient credits: sandbox sessions cost 2 credits (you have ${creditCheck.balance}).`,
+      });
+    }
 
     // 1. Check per-user concurrent sandbox limit
     const userActiveSandboxes = await this.prisma.sandboxSession.count({
@@ -138,6 +149,11 @@ export class SandboxService {
         expiresAt,
       },
     });
+
+    // 6b. Deduct 2 credits for the sandbox session (fire-and-forget — pre-checked above)
+    creditService
+      .deductCredits(userId, 2, "SANDBOX_SESSION", `Sandbox: ${module.name}`, session.id)
+      .catch((err) => log.error("Credit deduction failed for sandbox session", err));
 
     // 7. Build env vars from the module's requiredEnvVars
     const envVars = this.buildSandboxEnv(version.requiredEnvVars, sandboxPort, version.exposedPort || 3000, session.id);

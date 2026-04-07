@@ -10,7 +10,8 @@ import type {
   LLMResponse,
 } from "../llm/provider";
 
-export type AgentType = "setup" | "workflow" | "monitor" | "integration" | "composer";
+export type BuiltInAgentType = "setup" | "workflow" | "monitor" | "integration" | "composer";
+export type AgentType = BuiltInAgentType | (string & {});
 
 export interface AgentContext {
   userId: string;
@@ -33,6 +34,13 @@ export interface AgentConfig {
   greeting: string;
   tools: LLMTool[];
   maxTurns?: number;
+  personalitySuffix?: string;
+}
+
+export interface ChatResult {
+  response: string;
+  toolResults?: Record<string, unknown>[];
+  usage?: { inputTokens: number; outputTokens: number };
 }
 
 export abstract class BaseAgent {
@@ -64,19 +72,33 @@ export abstract class BaseAgent {
   async chat(
     messages: LLMMessage[],
     context: AgentContext,
-  ): Promise<{ response: string; toolResults?: Record<string, unknown>[] }> {
+  ): Promise<ChatResult> {
+    // Build system prompt with optional personality suffix
+    let systemPrompt = this.config.systemPrompt;
+    if (this.config.personalitySuffix) {
+      systemPrompt += `\n\n${this.config.personalitySuffix}`;
+    }
+
     const conversationMessages: LLMMessage[] = [
-      { role: "system", content: this.config.systemPrompt },
+      { role: "system", content: systemPrompt },
       ...messages,
     ];
 
     const maxTurns = this.config.maxTurns ?? 5;
     const toolResults: Record<string, unknown>[] = [];
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
 
     for (let turn = 0; turn < maxTurns; turn++) {
       const llmResponse = await this.provider.chat(conversationMessages, {
         tools: this.config.tools.length > 0 ? this.config.tools : undefined,
       });
+
+      // Accumulate token usage
+      if (llmResponse.usage) {
+        totalInputTokens += llmResponse.usage.inputTokens;
+        totalOutputTokens += llmResponse.usage.outputTokens;
+      }
 
       if (
         llmResponse.finishReason === "tool_calls" &&
@@ -127,6 +149,9 @@ export abstract class BaseAgent {
       return {
         response: llmResponse.content || "I apologize, I couldn't generate a response.",
         toolResults: toolResults.length > 0 ? toolResults : undefined,
+        usage: totalInputTokens > 0 || totalOutputTokens > 0
+          ? { inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
+          : undefined,
       };
     }
 
@@ -135,6 +160,9 @@ export abstract class BaseAgent {
       response:
         "I've reached the maximum number of processing steps. Here's what I've gathered so far. Please refine your request if you need more help.",
       toolResults: toolResults.length > 0 ? toolResults : undefined,
+      usage: totalInputTokens > 0 || totalOutputTokens > 0
+        ? { inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
+        : undefined,
     };
   }
 

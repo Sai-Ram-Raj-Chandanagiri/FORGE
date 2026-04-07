@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { router, publicProcedure, protectedProcedure } from "../trpc";
-import { searchModulesSchema } from "@/lib/validators/module";
+import { searchModulesSchema, listAgentModulesSchema } from "@/lib/validators/module";
 import { SearchService } from "@/server/services/search.service";
 import { ModuleService } from "@/server/services/module.service";
 import { PaymentService } from "@/server/services/payment.service";
+import { AgentMarketplaceService } from "@/server/services/agent-marketplace.service";
 
 export const storeRouter = router({
   browse: publicProcedure.input(searchModulesSchema).query(async ({ ctx, input }) => {
@@ -79,5 +80,40 @@ export const storeRouter = router({
       const paymentService = new PaymentService(ctx.prisma);
       await paymentService.cancelSubscription(ctx.user.id, input.purchaseId);
       return { success: true };
+    }),
+
+  // ==================== Agent Marketplace ====================
+
+  listAgentModules: publicProcedure
+    .input(listAgentModulesSchema)
+    .query(async ({ ctx, input }) => {
+      const service = new AgentMarketplaceService(ctx.prisma);
+      return service.listAgentModules(input);
+    }),
+
+  getAgentModule: publicProcedure
+    .input(z.object({ slug: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const moduleService = new ModuleService(ctx.prisma);
+      return moduleService.getBySlug(input.slug);
+    }),
+
+  installAgent: protectedProcedure
+    .input(z.object({ moduleId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const service = new AgentMarketplaceService(ctx.prisma);
+      return service.installAgent(ctx.user.id, input.moduleId);
+    }),
+
+  getInstalledAgents: protectedProcedure.query(async ({ ctx }) => {
+    const service = new AgentMarketplaceService(ctx.prisma);
+    return service.getInstalledAgents(ctx.user.id);
+  }),
+
+  uninstallAgent: protectedProcedure
+    .input(z.object({ moduleId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const service = new AgentMarketplaceService(ctx.prisma);
+      return service.uninstallAgent(ctx.user.id, input.moduleId);
     }),
 });

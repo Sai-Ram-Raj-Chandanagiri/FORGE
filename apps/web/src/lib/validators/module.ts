@@ -128,3 +128,66 @@ export type UpdateReviewInput = z.infer<typeof updateReviewSchema>;
 export type BuildFromRepoInput = z.infer<typeof buildFromRepoSchema>;
 export type GetBuildStatusInput = z.infer<typeof getBuildStatusSchema>;
 export type DetectProjectInput = z.infer<typeof detectProjectSchema>;
+
+// ==================== Agent Marketplace ====================
+
+export const publishAgentModuleSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Name must be at least 2 characters")
+    .max(100, "Name must be at most 100 characters"),
+  slug: z
+    .string()
+    .trim()
+    .min(2)
+    .max(100)
+    .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
+  shortDescription: z
+    .string()
+    .trim()
+    .min(10, "Short description must be at least 10 characters")
+    .max(200, "Short description must be at most 200 characters"),
+  description: z
+    .string()
+    .trim()
+    .min(50, "Description must be at least 50 characters")
+    .max(10000, "Description must be at most 10,000 characters"),
+  logoUrl: z.string().url().max(2048).optional().or(z.literal("")),
+  pricingModel: z.enum([
+    "FREE",
+    "ONE_TIME",
+    "SUBSCRIPTION_MONTHLY",
+    "SUBSCRIPTION_YEARLY",
+    "USAGE_BASED",
+  ]),
+  price: z.number().min(0).optional(),
+  agentConfig: z.object({
+    systemPrompt: z.string().trim().min(1).max(10000),
+    tools: z.array(
+      z.object({
+        name: z.string().trim().min(1).max(100),
+        description: z.string().trim().min(1).max(500),
+        parameters: z.record(z.unknown()),
+      }),
+    ),
+    personality: z.string().trim().max(200).optional(),
+    greeting: z.string().trim().min(1).max(500),
+  }),
+  dataPolicy: z
+    .object({
+      dataCollected: z.array(z.string()),
+      dataSentExternally: z.boolean(),
+      encryptionAtRest: z.boolean(),
+    })
+    .optional(),
+});
+
+export const listAgentModulesSchema = z.object({
+  query: z.string().max(200).optional(),
+  page: z.number().int().min(1).default(1),
+  limit: z.number().int().min(1).max(50).default(20),
+});
+
+export type PublishAgentModuleInput = z.infer<typeof publishAgentModuleSchema>;
+export type ListAgentModulesInput = z.infer<typeof listAgentModulesSchema>;

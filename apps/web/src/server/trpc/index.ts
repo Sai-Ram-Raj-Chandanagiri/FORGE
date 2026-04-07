@@ -15,6 +15,9 @@ import { workspaceRouter } from "./routers/workspace";
 import { platformRouter } from "./routers/platform";
 import { exportRouter } from "./routers/export";
 import { blueprintRouter } from "./routers/blueprint";
+import { insightsRouter } from "./routers/insights";
+import { creditsRouter } from "./routers/credits";
+import { mcpRouter } from "./routers/mcp";
 
 export const appRouter = router({
   auth: authRouter,
@@ -33,6 +36,9 @@ export const appRouter = router({
   platform: platformRouter,
   export: exportRouter,
   blueprint: blueprintRouter,
+  insights: insightsRouter,
+  credits: creditsRouter,
+  mcp: mcpRouter,
 });
 
 export type AppRouter = typeof appRouter;

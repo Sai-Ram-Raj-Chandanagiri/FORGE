@@ -8,6 +8,9 @@ import {
 } from "@forge/agent-sdk";
 import { logger } from "@/lib/logger";
 import { ForgeToolExecutor } from "./forge-tool-executor";
+import { AgentProfileService } from "./agent-profile.service";
+import { GovernanceService } from "./governance.service";
+import { CreditService } from "./credit.service";
 import type {
   ChatMessageInput,
   CreateWorkflowInput,
@@ -59,6 +62,16 @@ export class AgentService {
   async chat(userId: string, input: ChatMessageInput) {
     const { agentType, message, conversationId } = input;
 
+    // Credit pre-check: agent chat costs 1 credit
+    const creditService = new CreditService(this.prisma);
+    const creditCheck = await creditService.checkSufficientCredits(userId, 1);
+    if (!creditCheck.sufficient) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Insufficient credits: agent chat requires 1 credit (you have ${creditCheck.balance}). Purchase more at /settings/credits.`,
+      });
+    }
+
     // Get or create conversation
     let conversation;
     if (conversationId) {
@@ -101,10 +114,23 @@ export class AgentService {
     // Generate agent response — real LLM or fallback
     let agentResponse: string;
     let toolResults: Record<string, unknown>[] | undefined;
+    let usageData: { inputTokens: number; outputTokens: number } | undefined;
 
     const orchestrator = getOrchestrator(this.prisma);
+    const startTime = Date.now();
 
     if (orchestrator) {
+      // Inject personality suffix if configured
+      try {
+        const profileService = new AgentProfileService(this.prisma);
+        const suffix = await profileService.getSystemPromptSuffix(userId);
+        if (suffix) {
+          orchestrator.setPersonalitySuffix(agentType as AgentType, suffix);
+        }
+      } catch (err) {
+        log.warn("Failed to load agent personality:", err);
+      }
+
       // Convert ConversationMessage[] to LLMMessage[] for the orchestrator
       const llmMessages: LLMMessage[] = updatedMessages.map((m) => ({
         role: m.role,
@@ -115,10 +141,11 @@ export class AgentService {
         const result = await orchestrator.chat(
           agentType as AgentType,
           llmMessages,
-          { userId, conversationId: conversation.id },
+          { userId, conversationId: conversation.id, metadata: { agentType } },
         );
         agentResponse = result.response;
         toolResults = result.toolResults;
+        usageData = result.usage;
       } catch (err) {
         log.error("LLM call failed, using fallback:", err);
         agentResponse = generateAgentResponse(agentType, message);
@@ -126,6 +153,28 @@ export class AgentService {
     } else {
       agentResponse = generateAgentResponse(agentType, message);
     }
+
+    const durationMs = Date.now() - startTime;
+
+    // Deduct 1 credit for chat (fire-and-forget; already pre-checked)
+    creditService
+      .deductCredits(userId, 1, "AGENT_CHAT", `${agentType} chat`, conversation.id)
+      .catch((err) => log.error("Credit deduction failed for agent chat", err));
+
+    // Fire-and-forget audit logging
+    const governanceService = new GovernanceService(this.prisma);
+    governanceService
+      .logAuditEntry({
+        userId,
+        agentType,
+        action: "chat",
+        inputTokens: usageData?.inputTokens,
+        outputTokens: usageData?.outputTokens,
+        durationMs,
+        success: true,
+        conversationId: conversation.id,
+      })
+      .catch((err) => log.error("Audit log failed", err));
 
     updatedMessages.push({
       role: "assistant" as const,

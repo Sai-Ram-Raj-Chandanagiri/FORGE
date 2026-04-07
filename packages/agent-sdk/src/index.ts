@@ -2,7 +2,7 @@
 export type { LLMMessage } from "./llm/provider";
 
 // Agent Types (consumed by apps/web)
-export type { AgentType, AgentContext, ToolExecutor } from "./agents/base-agent";
+export type { AgentType, BuiltInAgentType, AgentContext, ToolExecutor, ChatResult, AgentConfig } from "./agents/base-agent";
 
 // Agent Classes
 export { ComposerAgent } from "./agents/composer-agent";
@@ -14,3 +14,9 @@ export { AgentOrchestrator, createOrchestrator } from "./orchestrator";
 export { LAYOUT_TOOLS } from "./tools/layout-tools";
 export { EXPORT_TOOLS } from "./tools/export-tools";
 export { BLUEPRINT_TOOLS } from "./tools/blueprint-tools";
+export { ACTION_QUEUE_TOOLS } from "./tools/action-queue-tools";
+export { CROSS_MODULE_TOOLS } from "./tools/cross-module-tools";
+
+// MCP Client
+export { ForgeMcpClient } from "./mcp/mcp-client";
+export type { McpToolDefinition, McpToolResult, ForgeMcpClientConfig } from "./mcp/mcp-client";

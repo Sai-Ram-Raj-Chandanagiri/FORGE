@@ -6,6 +6,7 @@ import { Bell, Moon, Sun, LogOut, User } from "lucide-react";
 import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
+import { CreditBalanceBadge } from "@/components/shared/credit-balance-badge";
 
 export function Header() {
   const { data: session } = useSession();
@@ -30,6 +31,9 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Credit balance */}
+        <CreditBalanceBadge />
+
         {/* Theme toggle */}
         <button
           type="button"
